@@ -30,6 +30,17 @@ if (isset($_ENV['VERCEL']) || isset($_SERVER['VERCEL'])) {
         }
     }
     $app->useStoragePath($storagePath);
+
+    $tmpDb = '/tmp/database.sqlite';
+    $bundledDb = dirname(__DIR__) . '/database/database.sqlite';
+    if (!file_exists($tmpDb) || filesize($tmpDb) === 0) {
+        if (file_exists($bundledDb)) {
+            @copy($bundledDb, $tmpDb);
+        } else {
+            @touch($tmpDb);
+        }
+    }
+    config(['database.connections.sqlite.database' => $tmpDb]);
 }
 
 return $app;

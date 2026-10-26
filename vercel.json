@@ -25,8 +25,13 @@
     }
   ],
   "env": {
+    "APP_NAME": "WOLA MUSASHI",
     "APP_ENV": "production",
-    "APP_DEBUG": "false",
+    "APP_KEY": "base64:y0KHUchsJH1tYr3yhXzNIi+SQvBk5/qMP4rqb18vrNw=",
+    "APP_DEBUG": "true",
+    "APP_TIMEZONE": "Asia/Jakarta",
+    "DB_CONNECTION": "sqlite",
+    "DB_DATABASE": "/tmp/database.sqlite",
     "APP_CONFIG_CACHE": "/tmp/config.php",
     "APP_EVENTS_CACHE": "/tmp/events.php",
     "APP_PACKAGES_CACHE": "/tmp/packages.php",
