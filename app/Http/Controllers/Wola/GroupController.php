@@ -627,6 +627,24 @@ class GroupController extends Controller
         $assessor->load('employee');
         $assessorName = $assessor->employee ? $assessor->employee->fullname : 'Penilai';
 
+        $leaderEmail = '';
+        if ($assessor->is_leader) {
+            $leaderUser = User::where('group_id', $group->id)->whereHas('roles', fn($q) => $q->where('name', 'ketua'))->first()
+                ?? User::where('group_id', $group->id)->first()
+                ?? ($assessor->employee_id ? User::where('employee_id', $assessor->employee_id)->first() : null);
+            if ($leaderUser) {
+                $userUpdates = ['name' => $assessorName];
+                if (!empty($newNrp) && ctype_digit($newNrp)) {
+                    $conflictUser = User::where('username', $newNrp)->where('id', '!=', $leaderUser->id)->exists();
+                    if (!$conflictUser) {
+                        $userUpdates['username'] = $newNrp;
+                    }
+                }
+                $leaderUser->update($userUpdates);
+                $leaderEmail = $leaderUser->email;
+            }
+        }
+
         ActivityLog::log(
             'UPDATE_ASSESSOR',
             "Memperbarui data Penilai '{$assessorName}' di Kelompok {$group->number}",
@@ -641,8 +659,8 @@ class GroupController extends Controller
             'old_nrp' => $oldNrp ?? '',
             'name' => $assessorName,
             'old_name' => $oldName ?? '',
-            'email' => '',
-            'old_email' => '',
+            'email' => $leaderEmail,
+            'old_email' => $leaderEmail,
             'role' => $assessor->is_leader ? 'ketua' : 'anggota',
             'group_number' => $group->number,
             'group_name' => $group->name,

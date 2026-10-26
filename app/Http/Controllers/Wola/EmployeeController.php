@@ -353,6 +353,7 @@ class EmployeeController extends Controller
         // Cari dan perbarui User terkait jika ada (sinkronisasi nama & username NRP)
         $linkedUser = User::where('username', $oldNrp)
             ->orWhere('name', $oldName)
+            ->orWhere('employee_id', $employee->id)
             ->first();
 
         if ($linkedUser) {
