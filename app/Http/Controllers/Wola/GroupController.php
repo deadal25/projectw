@@ -646,6 +646,8 @@ class GroupController extends Controller
             'role' => $assessor->is_leader ? 'ketua' : 'anggota',
             'group_number' => $group->number,
             'group_name' => $group->name,
+        ]);
+
         if ($sheetRes['success']) {
             $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet (tim_penilai & Karyawan)!";
         }
