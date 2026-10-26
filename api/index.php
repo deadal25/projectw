@@ -6,6 +6,11 @@ if ((isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PRO
     $_SERVER['SERVER_PORT'] = 443;
 }
 
+// Enable response compression to keep payload small for Vercel Serverless
+if (extension_loaded('zlib') && !ini_get('zlib.output_compression')) {
+    ini_set('zlib.output_compression', '1');
+}
+
 // Copy SQLite database to /tmp if needed on Vercel
 $tmpDb = '/tmp/database.sqlite';
 $bundledDb = __DIR__ . '/../database/database.sqlite';
