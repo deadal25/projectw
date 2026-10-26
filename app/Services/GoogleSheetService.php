@@ -987,7 +987,7 @@ class GoogleSheetService
             $body = $response->json();
             $report = $body['report'] ?? null;
 
-            // 2. Dukungan kompatibilitas ganda (fallback langsung ke tab Karyawan & tim_penilai HANYA jika tab belum terupdate)
+            // 2. Dukungan kompatibilitas ganda (fallback update tab Karyawan jika webhook lama belum cascade)
             if (!empty($nrp) || !empty($oldNrp)) {
                 $targetNrp = !empty($nrp) ? $nrp : $oldNrp;
 
@@ -1000,30 +1000,6 @@ class GoogleSheetService
                         'data' => [
                             'nrp' => $targetNrp,
                             'fullname' => $name,
-                        ],
-                    ]);
-                }
-
-                // Update tab tim_penilai via append HANYA JIKA tab tim_penilai belum memiliki data (report tim_penilai == 0)
-                // Ini mencegah penambahan baris ganda (duplikat) saat admin atau ketua melakukan edit data
-                if (!empty($groupNumber) && (!$report || (isset($report['tim_penilai']) && (int)$report['tim_penilai'] === 0))) {
-                    Http::timeout(10)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
-                        'action' => 'append',
-                        'sheet' => 'tim_penilai',
-                        'group_number' => (string) $groupNumber,
-                        'nrp' => (string) $targetNrp,
-                        'name' => $name,
-                        'fullname' => $name,
-                        'role' => $role === 'ketua' ? 'Ketua Kelompok' : 'Anggota Penilai',
-                        'row' => [
-                            $groupNumber,
-                            $groupName,
-                            $targetNrp,
-                            $name,
-                            $role === 'ketua' ? 'Ketua Kelompok' : 'Anggota Penilai',
-                            $groupName,
-                            'CIKARANG',
-                            0,
                         ],
                     ]);
                 }

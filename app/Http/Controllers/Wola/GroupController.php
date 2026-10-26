@@ -646,16 +646,6 @@ class GroupController extends Controller
             'role' => $assessor->is_leader ? 'ketua' : 'anggota',
             'group_number' => $group->number,
             'group_name' => $group->name,
-        ]);
-
-        // Jika tim_penilai belum terupdate in-place (report tim_penilai == 0), bersihkan baris lama dan tambahkan baris baru
-        if ($sheetRes['success'] && isset($sheetRes['report']['tim_penilai']) && (int)$sheetRes['report']['tim_penilai'] === 0) {
-            if (!empty($oldNrp) || !empty($oldName)) {
-                $this->googleSheetService->deleteAssessor($group->number, $oldNrp, $oldName);
-            }
-            $this->googleSheetService->appendAssessor($assessor, $group);
-        }
-
         if ($sheetRes['success']) {
             $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet (tim_penilai & Karyawan)!";
         }

@@ -168,9 +168,12 @@ class UserController extends Controller
         $user->assignRole($validated['role']);
 
         if ($user->hasRole('ketua') && $user->group_id) {
-            $leaderAssessor = $user->group?->syncLeaderAssessor();
-            if ($leaderAssessor) {
-                $this->googleSheetService->appendAssessor($leaderAssessor, $user->group);
+            $group = Group::find($user->group_id);
+            if ($group) {
+                $leaderAssessor = $group->syncLeaderAssessor();
+                if ($leaderAssessor) {
+                    $this->googleSheetService->appendAssessor($leaderAssessor, $group);
+                }
             }
         }
 
@@ -312,7 +315,8 @@ class UserController extends Controller
         }
 
         if ($user->hasRole('ketua') && $user->group_id) {
-            $user->group?->syncLeaderAssessor();
+            $group = Group::find($user->group_id);
+            $group?->syncLeaderAssessor();
         }
 
         ActivityLog::log(
@@ -323,6 +327,7 @@ class UserController extends Controller
 
         // Sinkronisasi otomatis ke Google Spreadsheet secara relasional (Pengguna, tim_penilai, Karyawan, Hasil_Penilaian)
         $sheetSyncNote = '';
+        $user->loadMissing(['group', 'employee']);
         $sheetRes = $this->googleSheetService->cascadeUpdatePerson([
             'nrp' => $user->username ?: ($user->employee?->nrp ?? ''),
             'old_nrp' => $oldUsername ?: ($user->employee?->nrp ?? ''),
@@ -335,6 +340,12 @@ class UserController extends Controller
             'group_name' => $user->group ? "Kelompok {$user->group->number} ({$user->group->name})" : 'Semua Area',
             'password' => !empty($validated['password']) ? $validated['password'] : null,
         ]);
+
+        // Jika akun belum ada di tab Pengguna spreadsheet (pengguna == 0), tambahkan ke tab Pengguna
+        if ($sheetRes['success'] && isset($sheetRes['report']['pengguna']) && (int)$sheetRes['report']['pengguna'] === 0) {
+            $this->googleSheetService->appendUser($user, $validated['role'], $validated['password'] ?? null);
+        }
+
         if ($sheetRes['success']) {
             $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet (Pengguna, tim_penilai, Karyawan)!";
         }
