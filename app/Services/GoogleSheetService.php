@@ -1131,7 +1131,7 @@ class GoogleSheetService
     /**
      * Hapus akun pengguna dari Google Spreadsheet (tab 'Pengguna')
      */
-    public function deleteUser(string $name, ?string $email = null, ?string $username = null): array
+    public function deleteUser(string $name, ?string $email = null, ?string $username = null, int|string|null $groupNumber = null): array
     {
         $settings = $this->getSettings();
         $webhookUrl = $settings['apps_script_url'] ?? null;
@@ -1148,6 +1148,7 @@ class GoogleSheetService
                 'name' => trim($name),
                 'username' => $username ? trim($username) : null,
                 'email' => $email ? trim($email) : null,
+                'group_number' => $groupNumber ? (string)$groupNumber : null,
             ];
 
             $response = Http::timeout(10)
@@ -1289,7 +1290,7 @@ class GoogleSheetService
     /**
      * Hapus data penilai dari Google Spreadsheet (tab 'tim_penilai')
      */
-    public function deleteAssessor(int|string $groupNumber, ?string $nrp = null, ?string $name = null): array
+    public function deleteAssessor(int|string $groupNumber, ?string $nrp = null, ?string $name = null, array $allNrps = []): array
     {
         $settings = $this->getSettings();
         $webhookUrl = $settings['apps_script_url'] ?? null;
@@ -1308,6 +1309,10 @@ class GoogleSheetService
                 'fullname' => $name ? trim((string)$name) : '',
             ];
 
+            if (!empty($allNrps)) {
+                $payload['nrps'] = array_values(array_filter(array_map('trim', $allNrps)));
+            }
+
             $response = Http::timeout(10)
                 ->withOptions(['allow_redirects' => true])
                 ->post($webhookUrl, $payload);
@@ -1316,7 +1321,7 @@ class GoogleSheetService
             $deletedCount = isset($data['deleted_count']) ? (int) $data['deleted_count'] : null;
 
             // Fallback: Jika tidak ada baris yang terhapus dan groupNumber sempat diisi, coba lagi tanpa membatasi nomor kelompok
-            if ($deletedCount === 0 && !empty($groupNumber)) {
+            if ($deletedCount === 0 && !empty($groupNumber) && (!empty($nrp) || !empty($name))) {
                 $payload['group_number'] = '';
                 $fallbackResp = Http::timeout(10)
                     ->withOptions(['allow_redirects' => true])
@@ -1869,17 +1874,21 @@ function doPost(e) {
       var sheetPengguna = ss.getSheetByName("Pengguna");
       if (sheetPengguna) {
         var vals = sheetPengguna.getDataRange().getValues();
+        var cleanTargetGrp = targetGroupNum.replace(/[^0-9]/g, '');
         for (var i = 1; i < vals.length; i++) {
           var pName = String(vals[i][0] || "").trim();
           var pUser = String(vals[i][1] || "").trim();
           var pEmail = String(vals[i][2] || "").trim().toLowerCase();
+          var pGrp = String(vals[i][4] || "").trim();
           var cleanPUser = pUser.replace(/[^0-9]/g, '');
+          var cleanPGrp = pGrp.replace(/[^0-9]/g, '');
           
           var matchEmail = (oldEmail !== "" && pEmail === oldEmail) || (targetEmail !== "" && pEmail === targetEmail);
           var matchNrp = (cleanOldNrp !== "" && cleanPUser === cleanOldNrp) || (cleanTargetNrp !== "" && cleanPUser === cleanTargetNrp);
           var matchName = (oldName !== "" && pName.toLowerCase() === oldName.toLowerCase()) || (targetName !== "" && pName.toLowerCase() === targetName.toLowerCase());
+          var matchGrp = (targetRole === "ketua" && cleanTargetGrp !== "" && (cleanPGrp === cleanTargetGrp || pGrp.indexOf("Kelompok " + cleanTargetGrp + " ") !== -1 || pGrp === "Kelompok " + cleanTargetGrp));
           
-          if (matchEmail || matchNrp || matchName) {
+          if (matchEmail || matchNrp || matchName || matchGrp) {
             var rowIdx = i + 1;
             if (targetName) sheetPengguna.getRange(rowIdx, 1).setValue(targetName);
             if (targetNrp) sheetPengguna.getRange(rowIdx, 2).setValue(targetNrp);
@@ -1897,17 +1906,21 @@ function doPost(e) {
       var sheetPenilai = ss.getSheetByName("tim_penilai");
       if (sheetPenilai) {
         var vals = sheetPenilai.getDataRange().getValues();
+        var cleanTargetGrp = targetGroupNum.replace(/[^0-9]/g, '');
         for (var i = 1; i < vals.length; i++) {
           var tGrp = String(vals[i][0] || "").trim();
           var tNrp = String(vals[i][2] || "").trim();
           var tName = String(vals[i][3] || "").trim();
+          var tRole = String(vals[i][4] || "").trim().toLowerCase();
           var cleanTNrp = tNrp.replace(/[^0-9]/g, '');
+          var cleanTGrp = tGrp.replace(/[^0-9]/g, '');
           
           var matchNrp = (cleanOldNrp !== "" && cleanTNrp === cleanOldNrp) || (cleanTargetNrp !== "" && cleanTNrp === cleanTargetNrp);
-          var matchGrpAndName = (targetGroupNum !== "" && (tGrp === targetGroupNum || tGrp.replace(/[^0-9]/g, '') === targetGroupNum.replace(/[^0-9]/g, ''))) && 
+          var matchGrpAndName = (cleanTargetGrp !== "" && (cleanTGrp === cleanTargetGrp || tGrp === targetGroupNum)) && 
                                 ((oldName !== "" && tName.toLowerCase() === oldName.toLowerCase()) || (targetName !== "" && tName.toLowerCase() === targetName.toLowerCase()));
+          var matchLeaderOfGrp = (targetRole === "ketua" && cleanTargetGrp !== "" && cleanTGrp === cleanTargetGrp && tRole.indexOf("ketua") !== -1);
           
-          if (matchNrp || matchGrpAndName) {
+          if (matchNrp || matchGrpAndName || matchLeaderOfGrp) {
             var rowIdx = i + 1;
             if (targetNrp) sheetPenilai.getRange(rowIdx, 3).setValue(targetNrp);
             if (targetName) sheetPenilai.getRange(rowIdx, 4).setValue(targetName);
@@ -2066,12 +2079,16 @@ function doPost(e) {
           var colName = (rowValues[0] || "").toLowerCase();
           var colUser = (rowValues[1] || "").toLowerCase();
           var colMail = (rowValues[2] || "").toLowerCase();
+          var colGrp = (rowValues[4] || "").toLowerCase();
           var q = targetNrp.toLowerCase();
+          var cleanTargetGrp = targetGroup.replace(/[^0-9]/g, '');
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
 
           if ((q !== "" && (colName === q || colUser === q || colMail === q)) ||
               (targetName !== "" && colName === targetName) ||
               (targetUser !== "" && colUser === targetUser) ||
-              (targetEmail !== "" && colMail === targetEmail)) {
+              (targetEmail !== "" && colMail === targetEmail) ||
+              (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp + " ") !== -1 || colGrp === "kelompok " + cleanTargetGrp))) {
             shouldDelete = true;
           }
 
@@ -2119,8 +2136,9 @@ function doPost(e) {
           var matchGrp = (targetGroup === "" || colGrp === targetGroup || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp));
           var matchNrp = (targetNrp !== "" && (colNrp === targetNrp.toLowerCase() || (!isNaN(colNrp) && !isNaN(targetNrp) && Number(colNrp) === Number(targetNrp)) || (nrpSet && nrpSet[colNrp])));
           var matchName = (targetName !== "" && (colName === targetName || colName.indexOf(targetName) !== -1 || targetName.indexOf(colName) !== -1));
+          var matchAllInGroup = (data.all_group === true && cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp);
 
-          if (matchGrp && (matchNrp || matchName)) {
+          if ((matchGrp && (matchNrp || matchName)) || matchAllInGroup) {
             shouldDelete = true;
           }
 

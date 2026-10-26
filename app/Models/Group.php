@@ -212,61 +212,48 @@ class Group extends Model
 
         $employee = null;
 
-        // 1. Cek NRP resmi berdasarkan mapping nama ketua atau nomor kelompok
-        $targetNrp = self::$officialLeaderNrps[$leaderUser->name] 
-            ?? (self::$groupLeaderNrps[$this->number] ?? null);
-
-        if ($targetNrp) {
-            $employee = Employee::where('nrp', $targetNrp)->first();
-        }
-
-        // 2. Cek jika username akun adalah NRP karyawan yang valid
-        if (!$employee && !empty($leaderUser->username)) {
-            $employee = Employee::where('nrp', trim($leaderUser->username))->first();
-        }
-
-        // 3. Cek jika user sudah memiliki employee_id yang valid
-        if (!$employee && $leaderUser->employee_id) {
+        // 1. Cek jika user sudah memiliki employee_id yang valid
+        if ($leaderUser->employee_id) {
             $existing = Employee::find($leaderUser->employee_id);
             if ($existing) {
-                if (!str_starts_with($existing->nrp, 'K-')) {
-                    $employee = $existing;
-                } else {
-                    // Jika berawalan K-, cek apakah ada master asli berdasarkan nama
-                    $realMaster = Employee::whereRaw('LOWER(fullname) = LOWER(?)', [trim($leaderUser->name)])
-                        ->where('nrp', 'not like', 'K-%')
-                        ->first();
-                    $employee = $realMaster ?: $existing;
-                }
+                $employee = $existing;
             }
         }
 
-        // 4. Jika belum ketemu, cari berdasarkan nama di master data karyawan (case-insensitive & bukan dummy K-)
-        if (!$employee) {
+        // 2. Cek jika username akun adalah NRP karyawan yang valid
+        if (!$employee && !empty($leaderUser->username) && ctype_digit($leaderUser->username)) {
+            $employee = Employee::where('nrp', trim($leaderUser->username))->first();
+        }
+
+        // 3. Cek jika nama cocok di master data karyawan
+        if (!$employee && !empty($leaderUser->name)) {
             $employee = Employee::whereRaw('LOWER(fullname) = LOWER(?)', [trim($leaderUser->name)])
                 ->where('nrp', 'not like', 'K-%')
                 ->first();
         }
 
-        // 5. Jika masih belum ketemu (misal variasi ejaan: Ricky Apriliyanto vs RICKY APRILIANTO)
+        // 4. Fallback ke pemetaan resmi lama HANYA jika belum terdaftar
         if (!$employee) {
-            $cleanName = str_replace(['yanto', 'ianto'], ['%anto', '%anto'], strtolower($leaderUser->name));
-            $employee = Employee::whereRaw('LOWER(fullname) LIKE ?', [$cleanName])
-                ->where('nrp', 'not like', 'K-%')
-                ->first();
+            $targetNrp = self::$officialLeaderNrps[$leaderUser->name] 
+                ?? (self::$groupLeaderNrps[$this->number] ?? null);
+            if ($targetNrp) {
+                $employee = Employee::where('nrp', $targetNrp)->first();
+            }
         }
 
-        // 6. Fallback jika benar-benar belum terdaftar
+        // 5. Fallback jika benar-benar belum terdaftar di database master karyawan
         if (!$employee) {
-            $nrp = $targetNrp ?: (!empty($leaderUser->username) ? trim($leaderUser->username) : ('K-' . str_pad((string)$this->number, 3, '0', STR_PAD_LEFT)));
+            $targetNrp = self::$officialLeaderNrps[$leaderUser->name] 
+                ?? (self::$groupLeaderNrps[$this->number] ?? null);
+            $nrp = (!empty($leaderUser->username) && ctype_digit($leaderUser->username)) 
+                ? trim($leaderUser->username) 
+                : ($targetNrp ?: ('K-' . str_pad((string)$this->number, 3, '0', STR_PAD_LEFT)));
             
             // Cek apakah employee dengan NRP ini sudah ada di database agar tidak terjadi UNIQUE constraint error
             $existingByNrp = Employee::where('nrp', $nrp)->first();
             if ($existingByNrp) {
                 $employee = $existingByNrp;
-                if (empty($employee->fullname) || $employee->fullname === 'Ketua Kelompok') {
-                    $employee->update(['fullname' => $leaderUser->name]);
-                }
+                $employee->update(['fullname' => $leaderUser->name]);
             } else {
                 $employee = Employee::create([
                     'area_wla' => $this->name,
@@ -277,6 +264,23 @@ class Group extends Model
                     'section' => 'Ketua Kelompok',
                     'plant' => 'CIKARANG',
                 ]);
+            }
+        }
+
+        // Pastikan nama dan NRP employee selalu sinkron dengan User saat ini
+        if ($employee) {
+            $empUpdates = [];
+            if ($employee->fullname !== $leaderUser->name) {
+                $empUpdates['fullname'] = $leaderUser->name;
+            }
+            if (!empty($leaderUser->username) && ctype_digit($leaderUser->username) && $employee->nrp !== $leaderUser->username) {
+                $conflict = Employee::where('nrp', $leaderUser->username)->where('id', '!=', $employee->id)->exists();
+                if (!$conflict) {
+                    $empUpdates['nrp'] = $leaderUser->username;
+                }
+            }
+            if (!empty($empUpdates)) {
+                $employee->update($empUpdates);
             }
         }
 
