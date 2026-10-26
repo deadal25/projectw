@@ -987,22 +987,26 @@ class GoogleSheetService
             $body = $response->json();
             $report = $body['report'] ?? null;
 
-            // 2. Dukungan kompatibilitas ganda (fallback langsung ke tab Karyawan & tim_penilai jika webhook lama masih aktif)
+            // 2. Dukungan kompatibilitas ganda (fallback langsung ke tab Karyawan & tim_penilai HANYA jika tab belum terupdate)
             if (!empty($nrp) || !empty($oldNrp)) {
                 $targetNrp = !empty($nrp) ? $nrp : $oldNrp;
-                // Update tab Karyawan via webhook aksi update
-                Http::timeout(10)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
-                    'action' => 'update',
-                    'sheet' => 'Karyawan',
-                    'nrp' => $targetNrp,
-                    'data' => [
-                        'nrp' => $targetNrp,
-                        'fullname' => $name,
-                    ],
-                ]);
 
-                // Update tab tim_penilai via webhook aksi append (yang memiliki logika deduplikasi/update in-place)
-                if (!empty($groupNumber)) {
+                // Update tab Karyawan via webhook aksi update hanya jika cascade_update_person belum mengupdate Karyawan
+                if (!$report || (isset($report['karyawan']) && (int)$report['karyawan'] === 0)) {
+                    Http::timeout(10)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
+                        'action' => 'update',
+                        'sheet' => 'Karyawan',
+                        'nrp' => $targetNrp,
+                        'data' => [
+                            'nrp' => $targetNrp,
+                            'fullname' => $name,
+                        ],
+                    ]);
+                }
+
+                // Update tab tim_penilai via append HANYA JIKA tab tim_penilai belum memiliki data (report tim_penilai == 0)
+                // Ini mencegah penambahan baris ganda (duplikat) saat admin atau ketua melakukan edit data
+                if (!empty($groupNumber) && (!$report || (isset($report['tim_penilai']) && (int)$report['tim_penilai'] === 0))) {
                     Http::timeout(10)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
                         'action' => 'append',
                         'sheet' => 'tim_penilai',
@@ -1334,6 +1338,25 @@ class GoogleSheetService
 
             $data = $response->json();
             $deletedCount = isset($data['deleted_count']) ? (int) $data['deleted_count'] : null;
+
+            // Fallback: Jika tidak ada baris yang terhapus dan groupNumber sempat diisi, coba lagi tanpa membatasi nomor kelompok
+            if ($deletedCount === 0 && !empty($groupNumber)) {
+                $payload['group_number'] = '';
+                $fallbackResp = Http::timeout(10)
+                    ->withOptions(['allow_redirects' => true])
+                    ->post($webhookUrl, $payload);
+                if ($fallbackResp->successful()) {
+                    $fbData = $fallbackResp->json();
+                    if (isset($fbData['deleted_count']) && (int)$fbData['deleted_count'] > 0) {
+                        return [
+                            'success' => true,
+                            'configured' => true,
+                            'deleted_count' => (int)$fbData['deleted_count'],
+                            'message' => $fbData['message'] ?? null,
+                        ];
+                    }
+                }
+            }
 
             return [
                 'success' => $response->successful(),

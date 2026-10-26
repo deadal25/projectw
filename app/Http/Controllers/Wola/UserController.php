@@ -364,6 +364,46 @@ class UserController extends Controller
         $username = $user->username;
         $isKetua = $user->hasRole('ketua');
         $groupNumber = $user->group ? $user->group->number : null;
+        $groupId = $user->group_id;
+        $employeeId = $user->employee_id;
+        $employeeNrp = $user->employee ? $user->employee->nrp : null;
+
+        // 1. Jika akun adalah Ketua atau memiliki relasi penilai, bersihkan record GroupAssessor, penilaian, dan sinkronisasi ke tim_penilai
+        if ($isKetua || $groupId || $employeeId) {
+            $assessors = GroupAssessor::where(function ($q) use ($groupId, $employeeId, $isKetua) {
+                if ($groupId && $isKetua) {
+                    $q->where('group_id', $groupId)->where('is_leader', true);
+                }
+                if ($employeeId) {
+                    $q->orWhere('employee_id', $employeeId);
+                }
+            })->get();
+
+            foreach ($assessors as $assessor) {
+                // Hapus data penilaian dan komentar yang dibuat oleh penilai ini
+                $assessor->assessments()->delete();
+                $assessor->comments()->delete();
+
+                $grpNum = $assessor->group ? $assessor->group->number : $groupNumber;
+                $aNrp = $assessor->employee ? $assessor->employee->nrp : ($employeeNrp ?: $username);
+                $aName = $assessor->employee ? $assessor->employee->fullname : $name;
+
+                // Hapus dari Google Spreadsheet tab tim_penilai
+                $this->googleSheetService->deleteAssessor($grpNum ?: '', $aNrp ?: '', $aName);
+
+                // Hapus record penilai dari database lokal
+                $assessor->delete();
+            }
+
+            // Pastikan baris di tab tim_penilai Google Spreadsheet terhapus (dengan nomor kelompok dan fallback global)
+            if ($isKetua) {
+                $targetNrp = $employeeNrp ?: ($username ?: '');
+                if (!empty($groupNumber)) {
+                    $this->googleSheetService->deleteAssessor($groupNumber, $targetNrp, $name);
+                }
+                $this->googleSheetService->deleteAssessor('', $targetNrp, $name);
+            }
+        }
 
         $user->delete();
 
@@ -376,9 +416,6 @@ class UserController extends Controller
         // Sinkronisasi hapus akun pengguna di Google Spreadsheet tab Pengguna & tim_penilai
         $sheetSyncNote = '';
         $sheetRes = $this->googleSheetService->deleteUser($name, $email, $username);
-        if ($isKetua && $groupNumber) {
-            $this->googleSheetService->deleteAssessor($groupNumber, $username ?: '', $name);
-        }
         if ($sheetRes['success']) {
             $tabNote = $isKetua ? "Pengguna & tim_penilai" : "Pengguna";
             $sheetSyncNote = " 🟢 Otomatis dihapus juga dari Google Spreadsheet tab {$tabNote}!";
