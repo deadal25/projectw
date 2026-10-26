@@ -901,6 +901,72 @@ class GoogleSheetService
     }
 
     /**
+     * Perbarui kelompok di Google Spreadsheet (tab 'Kelompok' dan cascade ke tim_penilai, Pengguna, Posisi_Job)
+     */
+    public function updateGroup(Group $group, int|string $oldNumber, string $oldName, ?string $oldPlant = null): array
+    {
+        $settings = $this->getSettings();
+        $webhookUrl = $settings['apps_script_url'] ?? null;
+
+        if (!$webhookUrl) {
+            return ['success' => false, 'configured' => false];
+        }
+
+        try {
+            $payload = [
+                'action' => 'cascade_update_group',
+                'number' => (string) $group->number,
+                'old_number' => (string) $oldNumber,
+                'name' => $group->name,
+                'old_name' => $oldName,
+                'plant' => $group->plant ?: 'CIKARANG',
+            ];
+
+            $response = Http::timeout(15)
+                ->withOptions(['allow_redirects' => true])
+                ->post($webhookUrl, $payload);
+
+            $body = $response->json();
+
+            // Fallback cerdas: Jika Apps Script yang dideploy user masih versi lama (belum ada aksi cascade_update_group)
+            if ($response->successful() && isset($body['status']) && $body['status'] === 'error' && str_contains($body['message'] ?? '', 'Aksi tidak dikenal')) {
+                // 1. Hapus data lama lalu append data baru di tab Kelompok
+                $this->deleteGroup($oldNumber, $oldName);
+                $this->appendGroup($group);
+
+                // 2. Perbarui juga data pengguna ketua kelompok di tab Pengguna jika ada
+                $leader = $group->leader;
+                if ($leader) {
+                    $this->cascadeUpdatePerson([
+                        'nrp' => $leader->username ?: ($leader->employee?->nrp ?? ''),
+                        'name' => $leader->name,
+                        'email' => $leader->email,
+                        'role' => 'ketua',
+                        'group_number' => $group->number,
+                        'group_name' => "Kelompok {$group->number} ({$group->name})",
+                    ]);
+                }
+
+                return [
+                    'success' => true,
+                    'configured' => true,
+                    'fallback' => true,
+                    'message' => 'Diperbarui via mode kompatibilitas spreadsheet.',
+                ];
+            }
+
+            return [
+                'success' => $response->successful() && ($body['status'] ?? '') === 'success',
+                'configured' => true,
+                'data' => $body,
+            ];
+        } catch (\Exception $e) {
+            Log::error("Exception in updateGroup Google Sheets: " . $e->getMessage());
+            return ['success' => false, 'configured' => true, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Tambah akun pengguna baru ke Google Spreadsheet (tab 'Pengguna')
      */
     public function appendUser(User $user, ?string $role = null, ?string $plainPassword = null): array
@@ -1227,6 +1293,60 @@ class GoogleSheetService
             return ['success' => $response->successful(), 'configured' => true];
         } catch (\Exception $e) {
             Log::error("Exception in deleteJob Google Sheets: " . $e->getMessage());
+            return ['success' => false, 'configured' => true, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Perbarui posisi job di Google Spreadsheet (tab 'Posisi_Job' dan cascade ke Hasil_Penilaian)
+     */
+    public function updateJob(int|string $groupNumber, Job $job, string $oldName, ?string $oldCode = null): array
+    {
+        $settings = $this->getSettings();
+        $webhookUrl = $settings['apps_script_url'] ?? null;
+
+        if (!$webhookUrl) {
+            return ['success' => false, 'configured' => false];
+        }
+
+        try {
+            $payload = [
+                'action' => 'update_job',
+                'group_number' => (string) $groupNumber,
+                'job_name' => $job->name,
+                'old_job_name' => $oldName,
+                'job_code' => $job->code,
+                'old_job_code' => $oldCode,
+                'target_employees' => $job->target_employees !== null ? (string)$job->target_employees : '',
+            ];
+
+            $response = Http::timeout(12)
+                ->withOptions(['allow_redirects' => true])
+                ->post($webhookUrl, $payload);
+
+            $body = $response->json();
+
+            // Fallback cerdas jika Apps Script versi lama
+            if ($response->successful() && isset($body['status']) && $body['status'] === 'error' && str_contains($body['message'] ?? '', 'Aksi tidak dikenal')) {
+                $group = Group::where('number', $groupNumber)->first();
+                $this->deleteJob($oldName, $groupNumber, $oldCode);
+                if ($group) {
+                    $this->appendJob($job, $group);
+                }
+                return [
+                    'success' => true,
+                    'configured' => true,
+                    'fallback' => true,
+                ];
+            }
+
+            return [
+                'success' => $response->successful() && ($body['status'] ?? '') === 'success',
+                'configured' => true,
+                'data' => $body,
+            ];
+        } catch (\Exception $e) {
+            Log::error("Exception in updateJob Google Sheets: " . $e->getMessage());
             return ['success' => false, 'configured' => true, 'error' => $e->getMessage()];
         }
     }
@@ -1819,6 +1939,102 @@ function doPost(e) {
         }
       }
 
+      // Khusus sheet Kelompok: Cegah baris ganda, perbarui jika nomor kelompok atau nama sudah ada
+      if (sheetName === "Kelompok" && row && row.length >= 2) {
+        var targetNum = String(data.number || row[0] || "").trim();
+        var targetName = String(data.name || row[1] || "").trim().toLowerCase();
+        var cleanTargetNum = targetNum.replace(/[^0-9]/g, '');
+        var values = sheet.getDataRange().getValues();
+        var updated = false;
+
+        for (var i = 1; i < values.length; i++) {
+          var colNum = String(values[i][0] || "").trim();
+          var colName = String(values[i][1] || "").trim().toLowerCase();
+          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+
+          if ((cleanTargetNum !== "" && cleanColNum === cleanTargetNum) || (targetName !== "" && colName === targetName)) {
+            for (var c = 0; c < row.length; c++) {
+              sheet.getRange(i + 1, c + 1).setValue(row[c]);
+            }
+            updated = true;
+            break;
+          }
+        }
+
+        if (updated) {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: "success",
+            action: "updated",
+            message: "Data kelompok sudah ada dan berhasil diperbarui di sheet Kelompok."
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+
+      // Khusus sheet Posisi_Job: Cegah jabatan ganda pada kelompok yang sama
+      if (sheetName === "Posisi_Job" && row && row.length >= 3) {
+        var targetGrp = String(row[0] || "").trim();
+        var cleanTargetGrp = targetGrp.replace(/[^0-9]/g, '');
+        var targetCode = String(row[1] || "").trim().toLowerCase();
+        var targetJob = String(row[2] || "").trim().toLowerCase();
+        var values = sheet.getDataRange().getValues();
+        var updated = false;
+
+        for (var i = 1; i < values.length; i++) {
+          var colGrp = String(values[i][0] || "").trim();
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var colCode = String(values[i][1] || "").trim().toLowerCase();
+          var colJob = String(values[i][2] || "").trim().toLowerCase();
+
+          var matchGrp = (targetGrp === "" || colGrp === targetGrp || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp));
+          var matchJob = (targetJob !== "" && colJob === targetJob) || (targetCode !== "" && colCode === targetCode);
+
+          if (matchGrp && matchJob) {
+            for (var c = 0; c < row.length; c++) {
+              sheet.getRange(i + 1, c + 1).setValue(row[c]);
+            }
+            updated = true;
+            break;
+          }
+        }
+
+        if (updated) {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: "success",
+            action: "updated",
+            message: "Data jabatan sudah ada dan berhasil diperbarui di sheet Posisi_Job."
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+
+      // Khusus sheet Pengguna: Cegah akun ganda berdasarkan Username / Email
+      if (sheetName === "Pengguna" && row && row.length >= 3) {
+        var targetUser = String(row[1] || "").trim().toLowerCase();
+        var targetEmail = String(row[2] || "").trim().toLowerCase();
+        var values = sheet.getDataRange().getValues();
+        var updated = false;
+
+        for (var i = 1; i < values.length; i++) {
+          var colUser = String(values[i][1] || "").trim().toLowerCase();
+          var colEmail = String(values[i][2] || "").trim().toLowerCase();
+
+          if ((targetEmail !== "" && colEmail === targetEmail) || (targetUser !== "" && colUser === targetUser)) {
+            for (var c = 0; c < row.length; c++) {
+              sheet.getRange(i + 1, c + 1).setValue(row[c]);
+            }
+            updated = true;
+            break;
+          }
+        }
+
+        if (updated) {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: "success",
+            action: "updated",
+            message: "Akun pengguna sudah ada dan berhasil diperbarui di sheet Pengguna."
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+
       sheet.appendRow(row);
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
@@ -2009,7 +2225,203 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 5. BULK SYNC SELURUH TAB HASIL_PENILAIAN (Format Baru 9 Kolom dengan NRP_Penilai & NRP_Dinilai)
+    // 5. CASCADE UPDATE KELOMPOK KE SELURUH TAB (Kelompok, tim_penilai, Pengguna, Posisi_Job, Hasil_Penilaian, Karyawan)
+    if (action === "cascade_update_group" || action === "update_group") {
+      var newNumber = String(data.number || "").trim();
+      var oldNumber = String(data.old_number || newNumber).trim();
+      var newName = String(data.name || "").trim();
+      var oldName = String(data.old_name || newName).trim();
+      var plant = String(data.plant || "CIKARANG").trim();
+      
+      var cleanOldNumber = oldNumber.replace(/[^0-9]/g, '');
+      var cleanNewNumber = newNumber.replace(/[^0-9]/g, '');
+      
+      var report = { kelompok: 0, tim_penilai: 0, pengguna: 0, posisi_job: 0, hasil_penilaian: 0, karyawan: 0 };
+      
+      // A. PERBARUI TAB 'Kelompok'
+      var sheetKel = ss.getSheetByName("Kelompok");
+      if (sheetKel) {
+        var vals = sheetKel.getDataRange().getValues();
+        var foundKel = false;
+        for (var i = 1; i < vals.length; i++) {
+          var colNum = String(vals[i][0] || "").trim();
+          var colName = String(vals[i][1] || "").trim();
+          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+          
+          if ((cleanOldNumber !== "" && cleanColNum === cleanOldNumber) || 
+              (cleanNewNumber !== "" && cleanColNum === cleanNewNumber) || 
+              (oldName !== "" && colName.toLowerCase() === oldName.toLowerCase()) ||
+              (newName !== "" && colName.toLowerCase() === newName.toLowerCase())) {
+            var rowIdx = i + 1;
+            sheetKel.getRange(rowIdx, 1).setValue(newNumber);
+            sheetKel.getRange(rowIdx, 2).setValue(newName);
+            if (plant) sheetKel.getRange(rowIdx, 3).setValue(plant);
+            foundKel = true;
+            report.kelompok++;
+            break;
+          }
+        }
+        if (!foundKel && newNumber !== "") {
+          sheetKel.appendRow([newNumber, newName, plant]);
+          report.kelompok++;
+        }
+      }
+      
+      // B. PERBARUI TAB 'tim_penilai'
+      var sheetPenilai = ss.getSheetByName("tim_penilai");
+      if (sheetPenilai) {
+        var vals = sheetPenilai.getDataRange().getValues();
+        for (var i = 1; i < vals.length; i++) {
+          var colNum = String(vals[i][0] || "").trim();
+          var colName = String(vals[i][1] || "").trim();
+          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+          
+          if ((cleanOldNumber !== "" && cleanColNum === cleanOldNumber) || 
+              (cleanNewNumber !== "" && cleanColNum === cleanNewNumber) || 
+              (oldName !== "" && colName.toLowerCase() === oldName.toLowerCase())) {
+            var rowIdx = i + 1;
+            sheetPenilai.getRange(rowIdx, 1).setValue(newNumber);
+            sheetPenilai.getRange(rowIdx, 2).setValue(newName);
+            if (plant) sheetPenilai.getRange(rowIdx, 7).setValue(plant);
+            report.tim_penilai++;
+          }
+        }
+      }
+      
+      // C. PERBARUI TAB 'Pengguna'
+      var sheetPengguna = ss.getSheetByName("Pengguna");
+      if (sheetPengguna) {
+        var vals = sheetPengguna.getDataRange().getValues();
+        for (var i = 1; i < vals.length; i++) {
+          var colGrp = String(vals[i][4] || "").trim();
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          
+          if ((cleanOldNumber !== "" && (cleanColGrp === cleanOldNumber || colGrp.indexOf("Kelompok " + cleanOldNumber + " ") !== -1 || colGrp === "Kelompok " + cleanOldNumber)) ||
+              (cleanNewNumber !== "" && (cleanColGrp === cleanNewNumber || colGrp.indexOf("Kelompok " + cleanNewNumber + " ") !== -1 || colGrp === "Kelompok " + cleanNewNumber)) ||
+              (oldName !== "" && colGrp.toLowerCase().indexOf(oldName.toLowerCase()) !== -1)) {
+            var rowIdx = i + 1;
+            sheetPengguna.getRange(rowIdx, 5).setValue("Kelompok " + newNumber + " (" + newName + ")");
+            report.pengguna++;
+          }
+        }
+      }
+      
+      // D. PERBARUI TAB 'Posisi_Job' (jika nomor kelompok berubah)
+      var sheetJob = ss.getSheetByName("Posisi_Job");
+      if (sheetJob && cleanOldNumber !== cleanNewNumber && cleanOldNumber !== "") {
+        var vals = sheetJob.getDataRange().getValues();
+        for (var i = 1; i < vals.length; i++) {
+          var colNum = String(vals[i][0] || "").trim();
+          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+          if (cleanColNum === cleanOldNumber) {
+            sheetJob.getRange(i + 1, 1).setValue(newNumber);
+            report.posisi_job++;
+          }
+        }
+      }
+      
+      // E. PERBARUI TAB 'Hasil_Penilaian' (jika nomor kelompok berubah)
+      var sheetHasil = ss.getSheetByName("Hasil_Penilaian");
+      if (sheetHasil && cleanOldNumber !== cleanNewNumber && cleanOldNumber !== "") {
+        var vals = sheetHasil.getDataRange().getValues();
+        for (var i = 1; i < vals.length; i++) {
+          var colNum = String(vals[i][1] || "").trim();
+          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+          if (cleanColNum === cleanOldNumber) {
+            sheetHasil.getRange(i + 1, 2).setValue(newNumber);
+            report.hasil_penilaian++;
+          }
+        }
+      }
+      
+      // F. PERBARUI TAB 'Karyawan' (Area_WLA jika nama kelompok berubah)
+      var sheetKaryawan = ss.getSheetByName("Karyawan");
+      if (sheetKaryawan && oldName !== "" && oldName.toLowerCase() !== newName.toLowerCase()) {
+        var vals = sheetKaryawan.getDataRange().getValues();
+        for (var i = 1; i < vals.length; i++) {
+          var colArea = String(vals[i][5] || "").trim();
+          if (colArea.toLowerCase() === oldName.toLowerCase()) {
+            sheetKaryawan.getRange(i + 1, 6).setValue(newName);
+            report.karyawan++;
+          }
+        }
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        action: "cascade_updated_group",
+        report: report,
+        message: "Berhasil memperbarui data Kelompok " + newNumber + " (" + newName + ") di seluruh tab Google Spreadsheet (Kelompok: " + report.kelompok + ", tim_penilai: " + report.tim_penilai + ", Pengguna: " + report.pengguna + ")."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 6. PERBARUI POSISI JOB & RELASI DI HASIL_PENILAIAN
+    if (action === "update_job") {
+      var targetGrp = String(data.group_number || "").trim();
+      var cleanTargetGrp = targetGrp.replace(/[^0-9]/g, '');
+      var newJobName = String(data.job_name || "").trim();
+      var oldJobName = String(data.old_job_name || newJobName).trim();
+      var newJobCode = String(data.job_code || "").trim();
+      var oldJobCode = String(data.old_job_code || newJobCode).trim();
+      var targetEmployees = data.target_employees !== undefined && data.target_employees !== null ? String(data.target_employees).trim() : "";
+      
+      var updated = false;
+      var sheetJob = ss.getSheetByName("Posisi_Job");
+      if (sheetJob) {
+        var vals = sheetJob.getDataRange().getValues();
+        for (var i = 1; i < vals.length; i++) {
+          var colGrp = String(vals[i][0] || "").trim();
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var colCode = String(vals[i][1] || "").trim();
+          var colName = String(vals[i][2] || "").trim();
+          
+          var matchGrp = (targetGrp === "" || colGrp === targetGrp || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp));
+          var matchJob = (oldJobName !== "" && colName.toLowerCase() === oldJobName.toLowerCase()) ||
+                         (newJobName !== "" && colName.toLowerCase() === newJobName.toLowerCase()) ||
+                         (oldJobCode !== "" && colCode.toLowerCase() === oldJobCode.toLowerCase());
+          
+          if (matchGrp && matchJob) {
+            var rowIdx = i + 1;
+            if (targetGrp !== "") sheetJob.getRange(rowIdx, 1).setValue(targetGrp);
+            if (newJobCode !== "") sheetJob.getRange(rowIdx, 2).setValue(newJobCode);
+            if (newJobName !== "") sheetJob.getRange(rowIdx, 3).setValue(newJobName);
+            if (targetEmployees !== "") sheetJob.getRange(rowIdx, 4).setValue(targetEmployees);
+            updated = true;
+            break;
+          }
+        }
+        if (!updated && targetGrp !== "" && newJobName !== "") {
+          sheetJob.appendRow([targetGrp, newJobCode, newJobName, targetEmployees]);
+          updated = true;
+        }
+      }
+      
+      // Update juga di sheet Hasil_Penilaian jika nama jabatan berubah
+      var sheetHasil = ss.getSheetByName("Hasil_Penilaian");
+      if (sheetHasil && oldJobName !== "" && oldJobName.toLowerCase() !== newJobName.toLowerCase()) {
+        var vals = sheetHasil.getDataRange().getValues();
+        var is9Col = (vals.length > 0 && vals[0].length >= 9 && String(vals[0][2]).toLowerCase().indexOf("nrp") !== -1);
+        var jobColIdx = is9Col ? 7 : 5;
+        for (var i = 1; i < vals.length; i++) {
+          var colGrp = String(vals[i][1] || "").trim();
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var colJob = String(vals[i][is9Col ? 6 : 4] || "").trim();
+          
+          var matchGrp = (targetGrp === "" || colGrp === targetGrp || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp));
+          if (matchGrp && colJob.toLowerCase() === oldJobName.toLowerCase()) {
+            sheetHasil.getRange(i + 1, jobColIdx).setValue(newJobName);
+          }
+        }
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        action: "job_updated",
+        message: "Berhasil memperbarui jabatan '" + newJobName + "' di sheet Posisi_Job Google Spreadsheet."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 7. BULK SYNC SELURUH TAB HASIL_PENILAIAN (Format Baru 9 Kolom dengan NRP_Penilai & NRP_Dinilai)
     if (action === "bulk_sync_hasil_penilaian") {
       var headerRow = ["Tanggal_Waktu", "Nomor_Kelompok", "NRP_Penilai", "Penilai", "NRP_Dinilai", "Karyawan_Dinilai", "Posisi_Job", "Status", "Catatan"];
       sheet.clearContents();
@@ -2025,7 +2437,7 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 6. HAPUS BARIS SECARA CERDAS SESUAI TABEL SHEET
+    // 8. HAPUS BARIS SECARA CERDAS SESUAI TABEL SHEET
     if (action === "delete") {
       var targetNrp = data.nrp !== undefined && data.nrp !== null ? String(data.nrp).trim() : "";
       var targetName = (data.fullname || data.name || (data.data ? data.data.fullname : "") || "").trim().toLowerCase();
@@ -2171,7 +2583,7 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 7. BERSIHKAN DUPLIKAT DI HASIL_PENILAIAN (Maintenance Anti-Ganda)
+    // 9. BERSIHKAN DUPLIKAT DI HASIL_PENILAIAN (Maintenance Anti-Ganda)
     if (action === "deduplicate" || action === "cleanup_duplicates") {
       var values = sheet.getDataRange().getValues();
       var is9Col = (values.length > 0 && values[0].length >= 9 && String(values[0][2]).toLowerCase().indexOf("nrp") !== -1);

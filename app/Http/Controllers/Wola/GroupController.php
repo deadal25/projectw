@@ -255,6 +255,10 @@ class GroupController extends Controller
             'leader_user_id' => 'nullable|exists:users,id',
         ]);
 
+        $oldNumber = $group->number;
+        $oldName = $group->name;
+        $oldPlant = $group->plant;
+
         $group->update([
             'number' => $validated['number'],
             'name' => $validated['name'],
@@ -269,17 +273,27 @@ class GroupController extends Controller
             User::where('group_id', $group->id)->update(['group_id' => null]);
         }
 
+        // Sinkronkan penilai ketua jika ada
+        $group->syncLeaderAssessor();
+
         ActivityLog::log(
             'UPDATE_GROUP',
             "Memperbarui informasi Kelompok {$group->number} - {$group->name}",
             ['group_id' => $group->id]
         );
 
-        if ($request->input('redirect_to') === 'show') {
-            return redirect()->route('wola.groups.show', $group)->with('success', "Informasi kelompok {$group->number} berhasil diperbarui.");
+        // Sinkronisasi otomatis ke Google Spreadsheet secara cascade (Kelompok, tim_penilai, Pengguna)
+        $sheetSyncNote = '';
+        $sheetRes = $this->googleSheetService->updateGroup($group, $oldNumber, $oldName, $oldPlant);
+        if ($sheetRes['success']) {
+            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet (Kelompok, tim_penilai, Pengguna)!";
         }
 
-        return redirect()->route('wola.groups.index')->with('success', "Informasi kelompok {$group->number} ({$group->name}) berhasil diperbarui.");
+        if ($request->input('redirect_to') === 'show') {
+            return redirect()->route('wola.groups.show', $group)->with('success', "Informasi kelompok {$group->number} berhasil diperbarui.{$sheetSyncNote}");
+        }
+
+        return redirect()->route('wola.groups.index')->with('success', "Informasi kelompok {$group->number} ({$group->name}) berhasil diperbarui.{$sheetSyncNote}");
     }
 
     /**
@@ -394,6 +408,9 @@ class GroupController extends Controller
             $validated['target_employees'] = null;
         }
 
+        $oldName = $job->name;
+        $oldCode = $job->code;
+
         $job->update($validated);
 
         ActivityLog::log(
@@ -402,8 +419,15 @@ class GroupController extends Controller
             ['group_id' => $group->id, 'job_id' => $job->id]
         );
 
+        // Sinkronisasi otomatis ke Google Spreadsheet tab Posisi_Job
+        $sheetSyncNote = '';
+        $sheetRes = $this->googleSheetService->updateJob($group->number, $job, $oldName, $oldCode);
+        if ($sheetRes['success']) {
+            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di Google Spreadsheet tab Posisi_Job!";
+        }
+
         return redirect()->route('wola.groups.show', [$group, 'tab' => 'jobs'])
-            ->with('success', "Jabatan '{$job->name}' berhasil diperbarui.");
+            ->with('success', "Jabatan '{$job->name}' berhasil diperbarui.{$sheetSyncNote}");
     }
 
     public function removeJob(Group $group, Job $job)
