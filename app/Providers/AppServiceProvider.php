@@ -23,5 +23,9 @@ class AppServiceProvider extends ServiceProvider
         if (app()->environment('production') || isset($_SERVER['VERCEL']) || isset($_ENV['VERCEL']) || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
             URL::forceScheme('https');
         }
+
+        if (isset($_SERVER['VERCEL']) || isset($_ENV['VERCEL'])) {
+            config(['database.connections.sqlite.database' => '/tmp/database.sqlite']);
+        }
     }
 }

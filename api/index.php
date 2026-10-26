@@ -16,6 +16,9 @@ if (!file_exists($tmpDb) || filesize($tmpDb) === 0) {
         @touch($tmpDb);
     }
 }
+putenv("DB_DATABASE={$tmpDb}");
+$_ENV['DB_DATABASE'] = $tmpDb;
+$_SERVER['DB_DATABASE'] = $tmpDb;
 
 // Forward Vercel serverless requests to public/index.php
 require __DIR__ . '/../public/index.php';

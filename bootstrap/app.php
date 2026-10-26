@@ -40,7 +40,6 @@ if (isset($_ENV['VERCEL']) || isset($_SERVER['VERCEL'])) {
             @touch($tmpDb);
         }
     }
-    config(['database.connections.sqlite.database' => $tmpDb]);
 }
 
 return $app;
