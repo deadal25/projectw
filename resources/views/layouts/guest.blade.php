@@ -9,12 +9,18 @@
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800&display=swap" rel="stylesheet" />
+        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800&family=inter:400,500,600,700,800&display=swap" rel="stylesheet" />
+
+        <!-- Enforce Clean Light Theme -->
+        <script>
+            document.documentElement.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+        </script>
 
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="font-sans text-slate-900 dark:text-slate-100 antialiased bg-slate-950 min-h-screen flex flex-col justify-center items-center py-6 sm:py-10 md:py-14 px-4 sm:px-6 lg:px-8">
+    <body class="font-sans text-slate-800 antialiased bg-slate-50 min-h-screen flex flex-col justify-center items-center py-6 sm:py-10 md:py-14 px-4 sm:px-6 lg:px-8 selection:bg-blue-500 selection:text-white">
         <div class="w-full max-w-sm sm:max-w-md lg:max-w-md 2xl:max-w-lg transition-all">
             {{ $slot }}
         </div>

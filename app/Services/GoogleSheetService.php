@@ -1049,7 +1049,7 @@ class GoogleSheetService
         }
 
         try {
-            $url = "https://docs.google.com/spreadsheets/d/{$spreadsheetId}/gviz/tq?tqx=out:json&sheet=" . urlencode('Pengguna');
+            $url = "https://docs.google.com/spreadsheets/d/{$spreadsheetId}/gviz/tq?tqx=out:json&headers=1&sheet=" . urlencode('Pengguna');
             $response = Http::timeout(10)->get($url);
             if (!$response->successful()) {
                 return null;
@@ -1079,8 +1079,9 @@ class GoogleSheetService
                     continue;
                 }
 
-                // Cocokkan identifier dengan Email ATAU Username / NRP
-                $matchEmail = (!empty($email) && strtolower($email) === $identifierClean);
+                // Cocokkan identifier dengan Email, Username / NRP, atau prefix email
+                $emailPrefix = !empty($email) ? strtolower(explode('@', $email)[0]) : '';
+                $matchEmail = (!empty($email) && (strtolower($email) === $identifierClean || $emailPrefix === $identifierClean));
                 $matchUsername = (!empty($username) && strtolower($username) === $identifierClean);
 
                 if ($matchEmail || $matchUsername) {
