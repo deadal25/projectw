@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "framework": null,
+  "functions": {
+    "api/index.php": {
+      "runtime": "vercel-php@0.7.3",
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
+  "routes": [
+    {
+      "src": "/build/(.*)",
+      "dest": "/public/build/$1"
+    },
+    {
+      "src": "/(css|js|images|favicon.ico)(.*)",
+      "dest": "/public/$1$2"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.php"
+    }
+  ],
+  "env": {
+    "APP_ENV": "production",
+    "APP_DEBUG": "false",
+    "APP_CONFIG_CACHE": "/tmp/config.php",
+    "APP_EVENTS_CACHE": "/tmp/events.php",
+    "APP_PACKAGES_CACHE": "/tmp/packages.php",
+    "APP_ROUTES_CACHE": "/tmp/routes.php",
+    "APP_SERVICES_CACHE": "/tmp/services.php",
+    "VIEW_COMPILED_PATH": "/tmp",
+    "CACHE_STORE": "array",
+    "SESSION_DRIVER": "cookie",
+    "LOG_CHANNEL": "stderr",
+    "GOOGLE_SHEET_URL": "https://docs.google.com/spreadsheets/d/15fKc1XUf5-647t-a5LC2j53FsGWE4JDl012ZVoZYgr0/edit?usp=sharing",
+    "GOOGLE_APPS_SCRIPT_URL": "https://script.google.com/macros/s/AKfycbzR3VH4dKoG4i8mnT-7gv3ZBZuXcb4CzxD8GvB7_SPXiRsM4iTc2bDS7574darO_j2v/exec"
+  }
+}
