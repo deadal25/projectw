@@ -328,7 +328,7 @@ class UserController extends Controller
 
         // Sinkronisasi otomatis ke Google Spreadsheet secara relasional (Pengguna, tim_penilai, Karyawan, Hasil_Penilaian)
         $sheetSyncNote = '';
-        $user->loadMissing(['group', 'employee']);
+        $user->load(['group', 'employee']);
         $newNrp = $user->username ?: ($user->employee?->nrp ?? '');
         $sheetRes = $this->googleSheetService->cascadeUpdatePerson([
             'nrp' => $newNrp,
@@ -344,14 +344,15 @@ class UserController extends Controller
         ]);
 
         if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet (Pengguna, tim_penilai, Karyawan)!";
+            $tabNote = $user->hasRole('ketua') ? "Pengguna & tim_penilai" : "Pengguna";
+            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet tab {$tabNote}!";
         }
 
         return redirect()->route('wola.users.index')->with('success', "Akun {$user->name} berhasil diperbarui.{$sheetSyncNote}");
     }
 
     /**
-     * Hapus akun pengguna
+     * Hapus akun pengguna (Jika akun Ketua: seluruh anggota tim penilai kelompoknya juga ikut terhapus)
      */
     public function destroy(User $user)
     {
@@ -370,13 +371,15 @@ class UserController extends Controller
         $name = $user->name;
         $email = $user->email;
         $username = $user->username;
-        $isKetua = $user->hasRole('ketua');
-        $groupNumber = $user->group ? $user->group->number : null;
-        $groupId = $user->group_id;
+        $isKetua = $user->hasRole('ketua') || $user->group_id !== null;
+        $group = $user->group ?? ($user->group_id ? Group::find($user->group_id) : null);
+        $groupId = $group ? $group->id : $user->group_id;
+        $groupNumber = $group ? $group->number : null;
         $employeeId = $user->employee_id;
         $employeeNrp = $user->employee ? $user->employee->nrp : null;
 
-        // 1. Jika akun adalah Ketua atau memiliki relasi kelompok, hapus seluruh tim penilai kelompok ini dari DB dan tim_penilai Spreadsheet
+        // Jika akun adalah Ketua atau memiliki relasi kelompok:
+        // Hapus KETUA dan SELURUH ANGGOTA tim penilai kelompok ini dari DB dan Google Spreadsheet tab tim_penilai!
         if ($isKetua || $groupId || $employeeId) {
             $assessors = GroupAssessor::where(function ($q) use ($groupId, $employeeId) {
                 if ($groupId) {
@@ -388,31 +391,63 @@ class UserController extends Controller
             })->with(['employee', 'group'])->get();
 
             $deletedNrps = [];
+            $deletedNames = [];
+
             foreach ($assessors as $assessor) {
                 // Hapus data penilaian dan komentar yang dibuat oleh penilai ini
                 $assessor->assessments()->delete();
                 $assessor->comments()->delete();
 
-                $grpNum = $assessor->group ? $assessor->group->number : $groupNumber;
-                $aNrp = $assessor->employee ? $assessor->employee->nrp : ($employeeNrp ?: $username);
-                $aName = $assessor->employee ? $assessor->employee->fullname : $name;
+                $aNrp = $assessor->employee ? $assessor->employee->nrp : null;
+                $aName = $assessor->employee ? $assessor->employee->fullname : null;
                 if ($aNrp) $deletedNrps[] = $aNrp;
-
-                // Hapus dari Google Spreadsheet tab tim_penilai
-                $this->googleSheetService->deleteAssessor($grpNum ?: '', $aNrp ?: '', $aName);
+                if ($aName) $deletedNames[] = $aName;
 
                 // Hapus record penilai dari database lokal
                 $assessor->delete();
             }
 
-            // Jika role ketua, pastikan baris ketua dan seluruh penilai kelompok ini di spreadsheet juga bersih
-            if ($isKetua) {
-                $targetNrp = $employeeNrp ?: ($username ?: '');
-                if ($targetNrp) $deletedNrps[] = $targetNrp;
-                if (!empty($groupNumber)) {
-                    $this->googleSheetService->deleteAssessor($groupNumber, $targetNrp, $name, $deletedNrps);
+            // Tambahkan juga identitas ketua jika belum masuk daftar
+            $targetNrp = $employeeNrp ?: ($username ?: '');
+            if ($targetNrp && !in_array($targetNrp, $deletedNrps)) {
+                $deletedNrps[] = $targetNrp;
+            }
+            if ($name && !in_array($name, $deletedNames)) {
+                $deletedNames[] = $name;
+            }
+
+            // Baca tab tim_penilai dari spreadsheet secara live untuk mendeteksi seluruh anggota kelompok
+            // yang tercatat di spreadsheet agar dipastikan terhapus bersih
+            if (!empty($groupNumber)) {
+                try {
+                    $sheetAssessors = $this->googleSheetService->fetchSheetRows('tim_penilai');
+                    $cleanTargetGrp = preg_replace('/[^0-9]/', '', (string)$groupNumber);
+                    foreach ($sheetAssessors as $sRow) {
+                        $sGrp = preg_replace('/[^0-9]/', '', (string)($sRow['nomor_kelompok'] ?? ''));
+                        if ($sGrp === $cleanTargetGrp) {
+                            $sNrp = trim((string)($sRow['nrp_penilai'] ?? ''));
+                            $sName = trim((string)($sRow['nama_penilai'] ?? ''));
+                            if (!empty($sNrp) && !in_array($sNrp, $deletedNrps)) {
+                                $deletedNrps[] = $sNrp;
+                            }
+                            if (!empty($sName) && !in_array($sName, $deletedNames)) {
+                                $deletedNames[] = $sName;
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::warning("Gagal fetch tab tim_penilai saat hapus ketua: " . $e->getMessage());
                 }
-                $this->googleSheetService->deleteAssessor('', $targetNrp, $name, $deletedNrps);
+            }
+
+            // Hapus dari Google Spreadsheet tab tim_penilai secara menyeluruh (Ketua + seluruh anggota)
+            $this->googleSheetService->deleteAssessor($groupNumber ?: '', $targetNrp, $name, $deletedNrps, true);
+
+            // Pastikan per-NRP anggota juga dikirimkan agar kompatibel dengan seluruh versi Apps Script
+            foreach ($deletedNrps as $nrpItem) {
+                if (!empty($nrpItem) && $nrpItem !== $targetNrp) {
+                    $this->googleSheetService->deleteAssessor($groupNumber ?: '', $nrpItem, '');
+                }
             }
         }
 
@@ -420,18 +455,22 @@ class UserController extends Controller
 
         ActivityLog::log(
             'DELETE_USER',
-            "Menghapus akun: {$name} ({$email})",
+            "Menghapus akun: {$name} ({$email})" . ($isKetua ? " beserta seluruh anggota tim penilai Kelompok " . ($groupNumber ?? '') : ''),
             ['deleted_user_email' => $email]
         );
 
-        // Sinkronisasi hapus akun pengguna di Google Spreadsheet tab Pengguna & tim_penilai
+        // Sinkronisasi hapus akun pengguna di Google Spreadsheet tab Pengguna
         $sheetSyncNote = '';
         $sheetRes = $this->googleSheetService->deleteUser($name, $email, $username, $groupNumber);
         if ($sheetRes['success']) {
-            $tabNote = $isKetua ? "Pengguna & tim_penilai" : "Pengguna";
+            $tabNote = $isKetua ? "Pengguna & seluruh anggota tim penilai tab tim_penilai" : "Pengguna";
             $sheetSyncNote = " 🟢 Otomatis dihapus juga dari Google Spreadsheet tab {$tabNote}!";
         }
 
-        return redirect()->route('wola.users.index')->with('success', "Akun {$name} berhasil dihapus.{$sheetSyncNote}");
+        $successMsg = $isKetua 
+            ? "Akun Ketua {$name} beserta seluruh anggota tim penilai kelompok " . ($groupNumber ? "{$groupNumber}" : '') . " berhasil dihapus.{$sheetSyncNote}"
+            : "Akun {$name} berhasil dihapus.{$sheetSyncNote}";
+
+        return redirect()->route('wola.users.index')->with('success', $successMsg);
     }
 }

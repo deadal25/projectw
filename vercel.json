@@ -42,6 +42,6 @@
     "SESSION_DRIVER": "cookie",
     "LOG_CHANNEL": "stderr",
     "GOOGLE_SHEET_URL": "https://docs.google.com/spreadsheets/d/15fKc1XUf5-647t-a5LC2j53FsGWE4JDl012ZVoZYgr0/edit?usp=sharing",
-    "GOOGLE_APPS_SCRIPT_URL": "https://script.google.com/macros/s/AKfycbzR3VH4dKoG4i8mnT-7gv3ZBZuXcb4CzxD8GvB7_SPXiRsM4iTc2bDS7574darO_j2v/exec"
+    "GOOGLE_APPS_SCRIPT_URL": "https://script.google.com/macros/s/AKfycbyaWhCf4S4xmm5yP7mPBwlxbWCEiSsv8UtzFSfFyDjPWFfnzbgXgTDlzWeSbjDq8eCr/exec"
   }
 }

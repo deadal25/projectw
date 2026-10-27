@@ -341,11 +341,13 @@ class GroupController extends Controller
             ['number' => $num]
         );
 
-        // Sinkronisasi hapus kelompok di Google Spreadsheet tab Kelompok
+        // Sinkronisasi hapus kelompok di Google Spreadsheet tab Kelompok & tim_penilai
         $sheetSyncNote = '';
         $sheetRes = $this->googleSheetService->deleteGroup($num, $name);
+        $this->googleSheetService->deleteAssessor($num, '', '', [], true);
+
         if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis dihapus juga dari Google Spreadsheet tab Kelompok!";
+            $sheetSyncNote = " 🟢 Otomatis dihapus juga dari Google Spreadsheet tab Kelompok & tim_penilai!";
         }
 
         return redirect()->route('wola.groups.index')->with('success', "Kelompok {$num} ({$name}) beserta akun Ketua dan seluruh datanya berhasil dihapus.{$sheetSyncNote}");
@@ -650,13 +652,16 @@ class GroupController extends Controller
 
         $assessor->load('employee');
         $assessorName = $assessor->employee ? $assessor->employee->fullname : 'Penilai';
+        $newNrp = $assessor->employee?->nrp ?? '';
 
         $leaderEmail = '';
+        $oldLeaderName = $oldName;
         if ($assessor->is_leader) {
             $leaderUser = User::where('group_id', $group->id)->whereHas('roles', fn($q) => $q->where('name', 'ketua'))->first()
                 ?? User::where('group_id', $group->id)->first()
                 ?? ($assessor->employee_id ? User::where('employee_id', $assessor->employee_id)->first() : null);
             if ($leaderUser) {
+                $oldLeaderName = $leaderUser->name;
                 $userUpdates = ['name' => $assessorName];
                 if (!empty($newNrp) && ctype_digit($newNrp)) {
                     $conflictUser = User::where('username', $newNrp)->where('id', '!=', $leaderUser->id)->exists();
@@ -677,21 +682,21 @@ class GroupController extends Controller
 
         // Sinkronisasi otomatis ke Google Spreadsheet secara relasional
         $sheetSyncNote = '';
-        $newNrp = $assessor->employee?->nrp ?? '';
         $sheetRes = $this->googleSheetService->cascadeUpdatePerson([
             'nrp' => $newNrp,
             'old_nrp' => $oldNrp ?? '',
             'name' => $assessorName,
-            'old_name' => $oldName ?? '',
+            'old_name' => $oldLeaderName ?: $oldName,
             'email' => $leaderEmail,
             'old_email' => $leaderEmail,
             'role' => $assessor->is_leader ? 'ketua' : 'anggota',
             'group_number' => $group->number,
-            'group_name' => $group->name,
+            'group_name' => "Kelompok {$group->number} ({$group->name})",
         ]);
 
         if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet (tim_penilai & Karyawan)!";
+            $tabName = $assessor->is_leader ? 'Pengguna, tim_penilai & Karyawan' : 'tim_penilai & Karyawan';
+            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet ({$tabName})!";
         }
 
         return back()->with('success', "Data Penilai '{$assessorName}' berhasil diperbarui.{$sheetSyncNote}");

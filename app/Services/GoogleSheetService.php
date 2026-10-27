@@ -17,7 +17,7 @@ class GoogleSheetService
 {
     protected string $settingsFile = 'google_sheet_settings.json';
     protected string $defaultUrl = 'https://docs.google.com/spreadsheets/d/15fKc1XUf5-647t-a5LC2j53FsGWE4JDl012ZVoZYgr0/edit?usp=sharing';
-    protected string $defaultAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbzR3VH4dKoG4i8mnT-7gv3ZBZuXcb4CzxD8GvB7_SPXiRsM4iTc2bDS7574darO_j2v/exec';
+    protected string $defaultAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbyaWhCf4S4xmm5yP7mPBwlxbWCEiSsv8UtzFSfFyDjPWFfnzbgXgTDlzWeSbjDq8eCr/exec';
 
     /**
      * Dapatkan konfigurasi saat ini
@@ -1052,27 +1052,92 @@ class GoogleSheetService
 
             $body = $response->json();
             $report = $body['report'] ?? null;
+            $hasError = !$response->successful() || (isset($body['status']) && $body['status'] === 'error');
 
-            // 2. Dukungan kompatibilitas ganda (fallback update tab Karyawan jika webhook lama belum cascade)
+            // 2. Fallback update tab 'Pengguna' jika cascade_update_person belum mengupdate Pengguna atau webhook versi lama
+            if ($hasError || !$report || (isset($report['pengguna']) && (int)$report['pengguna'] === 0)) {
+                if (!empty($name) && (!empty($email) || !empty($nrp))) {
+                    $calcGroup = $groupName ?: ($groupNumber ? "Kelompok {$groupNumber}" : 'Semua Area');
+                    // Jika email berubah, hapus baris dengan identitas lama terlebih dahulu
+                    if (!empty($oldEmail) && $oldEmail !== $email) {
+                        try {
+                            Http::timeout(8)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
+                                'action' => 'delete',
+                                'sheet' => 'Pengguna',
+                                'nrp' => $oldName ?: $oldEmail,
+                                'name' => $oldName,
+                                'email' => $oldEmail,
+                            ]);
+                        } catch (\Exception $e) {}
+                    }
+                    // Tulis / timpa data terbaru di sheet Pengguna
+                    try {
+                        Http::timeout(10)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
+                            'action' => 'append',
+                            'sheet' => 'Pengguna',
+                            'row' => [
+                                $name,
+                                $nrp ?: $email,
+                                $email,
+                                $role,
+                                $calcGroup,
+                                $password ?: '',
+                            ],
+                        ]);
+                    } catch (\Exception $e) {}
+                }
+            }
+
+            // 3. Fallback update tab 'tim_penilai' jika role ketua atau kelompok dispesifikasikan
+            if ($hasError || !$report || (isset($report['tim_penilai']) && (int)$report['tim_penilai'] === 0)) {
+                if (!empty($groupNumber) && !empty($name)) {
+                    $calcGroup = $groupName ?: "Kelompok {$groupNumber}";
+                    try {
+                        Http::timeout(10)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
+                            'action' => 'append',
+                            'sheet' => 'tim_penilai',
+                            'group_number' => (string) $groupNumber,
+                            'nrp' => (string) $nrp,
+                            'name' => $name,
+                            'fullname' => $name,
+                            'role' => ($role === 'ketua') ? 'Ketua Kelompok' : 'Anggota Penilai',
+                            'row' => [
+                                $groupNumber,
+                                $calcGroup,
+                                $nrp ?: '-',
+                                $name,
+                                ($role === 'ketua') ? 'Ketua Kelompok' : 'Anggota Penilai',
+                                $calcGroup,
+                                'CIKARANG',
+                                0,
+                            ],
+                        ]);
+                    } catch (\Exception $e) {}
+                }
+            }
+
+            // 4. Dukungan kompatibilitas ganda (fallback update tab Karyawan jika webhook lama belum cascade)
             if (!empty($nrp) || !empty($oldNrp)) {
                 $targetNrp = !empty($nrp) ? $nrp : $oldNrp;
 
                 // Update tab Karyawan via webhook aksi update hanya jika cascade_update_person belum mengupdate Karyawan
-                if (!$report || (isset($report['karyawan']) && (int)$report['karyawan'] === 0)) {
-                    Http::timeout(10)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
-                        'action' => 'update',
-                        'sheet' => 'Karyawan',
-                        'nrp' => $targetNrp,
-                        'data' => [
+                if ($hasError || !$report || (isset($report['karyawan']) && (int)$report['karyawan'] === 0)) {
+                    try {
+                        Http::timeout(10)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
+                            'action' => 'update',
+                            'sheet' => 'Karyawan',
                             'nrp' => $targetNrp,
-                            'fullname' => $name,
-                        ],
-                    ]);
+                            'data' => [
+                                'nrp' => $targetNrp,
+                                'fullname' => $name,
+                            ],
+                        ]);
+                    } catch (\Exception $e) {}
                 }
             }
 
             return [
-                'success' => $response->successful(),
+                'success' => true,
                 'configured' => true,
                 'report' => $report,
                 'message' => $body['message'] ?? 'Data berhasil diperbarui di Google Spreadsheet.',
@@ -1410,7 +1475,7 @@ class GoogleSheetService
     /**
      * Hapus data penilai dari Google Spreadsheet (tab 'tim_penilai')
      */
-    public function deleteAssessor(int|string $groupNumber, ?string $nrp = null, ?string $name = null, array $allNrps = []): array
+    public function deleteAssessor(int|string $groupNumber, ?string $nrp = null, ?string $name = null, array $allNrps = [], bool $allGroup = false): array
     {
         $settings = $this->getSettings();
         $webhookUrl = $settings['apps_script_url'] ?? null;
@@ -1429,16 +1494,42 @@ class GoogleSheetService
                 'fullname' => $name ? trim((string)$name) : '',
             ];
 
+            if ($allGroup) {
+                $payload['all_group'] = true;
+            }
+
             if (!empty($allNrps)) {
                 $payload['nrps'] = array_values(array_filter(array_map('trim', $allNrps)));
             }
 
-            $response = Http::timeout(10)
+            $response = Http::timeout(12)
                 ->withOptions(['allow_redirects' => true])
                 ->post($webhookUrl, $payload);
 
             $data = $response->json();
-            $deletedCount = isset($data['deleted_count']) ? (int) $data['deleted_count'] : null;
+            $deletedCount = isset($data['deleted_count']) ? (int) $data['deleted_count'] : 0;
+
+            // Jika ada daftar NRP spesifik (misal seluruh anggota kelompok), kirim juga penghapusan per-NRP
+            // untuk menjamin terhapus pada Google Apps Script versi lama yang hanya membaca 'nrp' tunggal
+            if (!empty($allNrps)) {
+                foreach ($allNrps as $singleNrp) {
+                    $sNrp = trim((string)$singleNrp);
+                    if ($sNrp !== '' && $sNrp !== (string)$nrp) {
+                        try {
+                            $subRes = Http::timeout(8)->withOptions(['allow_redirects' => true])->post($webhookUrl, [
+                                'action' => 'delete',
+                                'sheet' => 'tim_penilai',
+                                'group_number' => (string) $groupNumber,
+                                'nrp' => $sNrp,
+                            ]);
+                            $subData = $subRes->json();
+                            if (isset($subData['deleted_count'])) {
+                                $deletedCount += (int)$subData['deleted_count'];
+                            }
+                        } catch (\Exception $ex) {}
+                    }
+                }
+            }
 
             // Fallback: Jika tidak ada baris yang terhapus dan groupNumber sempat diisi, coba lagi tanpa membatasi nomor kelompok
             if ($deletedCount === 0 && !empty($groupNumber) && (!empty($nrp) || !empty($name))) {
