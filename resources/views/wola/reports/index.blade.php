@@ -134,11 +134,9 @@
                                     <label class="block text-[11px] font-bold text-slate-500 mb-1">Pilih Jabatan yang Dinilai:</label>
                                     <select name="job_id" onchange="this.form.submit()"
                                             class="px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500">
-                                        @if(Auth::user()->hasRole(['superadmin', 'admin']))
-                                            <option value="all" {{ ($isAllJobs ?? false) || request('job_id') === 'all' ? 'selected' : '' }}>
-                                                🌟 Semua Posisi Jabatan (Semuanya)
-                                            </option>
-                                        @endif
+                                        <option value="all" {{ ($isAllJobs ?? false) || request('job_id') === 'all' ? 'selected' : '' }}>
+                                            🌟 Semua Posisi Jabatan (Semuanya)
+                                        </option>
                                         @forelse($jobs as $j)
                                             <option value="{{ $j->id }}" {{ !($isAllJobs ?? false) && $selectedJob && $selectedJob->id == $j->id ? 'selected' : '' }}>
                                                 {{ $j->name }}

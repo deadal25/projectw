@@ -78,7 +78,7 @@ class ReportController extends Controller
         $matrixEmployees = collect();
         $jobs = collect();
         $allGroupsMatrixData = [];
-        $isAllJobs = ($request->input('job_id') === 'all' && Auth::user()->hasRole(['superadmin', 'admin']));
+        $isAllJobs = ($request->input('job_id') === 'all');
         $singleGroupAllJobsData = [];
         $globalMatrixStats = [
             'total_groups' => $allGroups->count(),
@@ -195,7 +195,7 @@ class ReportController extends Controller
             ];
         } else {
             // Mode 1 Kelompok Spesifik
-            $isAllJobs = ($request->input('job_id') === 'all' && Auth::user()->hasRole(['superadmin', 'admin']));
+            $isAllJobs = ($request->input('job_id') === 'all');
             $singleGroupAllJobsData = [];
 
             if ($selectedGroup) {
