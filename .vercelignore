@@ -1,11 +1,13 @@
 /vendor
 /node_modules
+/dist
 /.git
 .env
 .env.*
 .editorconfig
 README.md
 tests
+*.pdf
 public/robots.txt
 public/hot
 storage/logs/*
