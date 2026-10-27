@@ -265,6 +265,16 @@ class GroupController extends Controller
             'threshold_lagging' => $validated['threshold_lagging'] ?? $group->threshold_lagging ?? 40,
         ]);
 
+        // Perbarui data Area WLA pada seluruh Karyawan di database lokal yang terikat pada kelompok ini
+        if ($oldName !== $validated['name'] || (int)$oldNumber !== (int)$validated['number']) {
+            Employee::where(function ($q) use ($oldName, $oldNumber) {
+                $q->where('area_wla', $oldName)
+                  ->orWhere('area_wla', 'like', "%{$oldName}%")
+                  ->orWhere('area_wla', 'Kelompok ' . $oldNumber)
+                  ->orWhere('area_wla', 'like', "%Kelompok {$oldNumber}%");
+            })->update(['area_wla' => $validated['name']]);
+        }
+
         // Hubungkan akun Ketua jika dipilih atau kosongkan jika dilepas secara eksplisit
         if (!empty($validated['leader_user_id'])) {
             User::where('group_id', $group->id)->where('id', '!=', $validated['leader_user_id'])->update(['group_id' => null]);
@@ -289,11 +299,13 @@ class GroupController extends Controller
             ['group_id' => $group->id]
         );
 
-        // Sinkronisasi otomatis ke Google Spreadsheet secara cascade (Kelompok, tim_penilai, Pengguna)
+        // Sinkronisasi otomatis ke Google Spreadsheet secara cascade (Kelompok, tim_penilai, Pengguna, Karyawan)
         $sheetSyncNote = '';
         $sheetRes = $this->googleSheetService->updateGroup($group, $oldNumber, $oldName, $oldPlant);
         if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet (Kelompok, tim_penilai, Pengguna)!";
+            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet (Kelompok, tim_penilai, Pengguna, dan Area WLA Karyawan)!";
+        } elseif (!empty($sheetRes['need_deploy'])) {
+            $sheetSyncNote = " (⚠️ Catatan Spreadsheet: Salin & terapkan kode Apps Script terbaru di menu Ekstensi > Apps Script agar pembaruan nama di tab Karyawan, tim_penilai, dan Pengguna berjalan otomatis).";
         }
 
         if ($request->input('redirect_to') === 'show') {
