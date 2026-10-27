@@ -16,7 +16,7 @@
       "dest": "/public/build/$1"
     },
     {
-      "src": "/(css|js|images|favicon.ico)(.*)",
+      "src": "/(css|js|images|favicon.*|logo.*|Login.*|apple-touch-icon.*|android-chrome.*)(.*)",
       "dest": "/public/$1$2"
     },
     {

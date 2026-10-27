@@ -7,6 +7,13 @@
 
         <title>{{ config('app.name', 'WOLA MUSASHI') }} - PORTAL WOLA</title>
 
+        <!-- Favicon / Logo -->
+        <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}?v=1">
+        <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('favicon-16x16.png') }}?v=1">
+        <link rel="icon" type="image/png" href="{{ asset('logo.png') }}?v=1">
+        <link rel="shortcut icon" href="{{ asset('favicon.ico') }}?v=1">
+        <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}?v=1">
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800&family=inter:400,500,600,700,800&display=swap" rel="stylesheet" />

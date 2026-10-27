@@ -21,8 +21,8 @@
         <!-- Header Brand WOLA MUSASHI -->
         <div class="h-16 flex items-center justify-between px-5 border-b border-slate-800 shrink-0 bg-slate-950/60">
             <a href="{{ route('dashboard') }}" class="flex items-center space-x-3">
-                <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black shadow-md shadow-blue-600/40 tracking-wider">
-                    W
+                <div class="w-10 h-10 rounded-xl bg-white p-1.5 flex items-center justify-center shadow-md shadow-blue-900/40 shrink-0">
+                    <img src="{{ asset('logo.png') }}" alt="Logo WOLA MUSASHI" class="max-h-full max-w-full object-contain">
                 </div>
                 <div>
                     <span class="font-black text-sm tracking-tight text-white block leading-tight">WOLA MUSASHI</span>

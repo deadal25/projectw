@@ -7,6 +7,13 @@
 
         <title>{{ config('app.name', 'WOLA MUSASHI') }} - PORTAL WOLA</title>
 
+        <!-- Favicon / Logo -->
+        <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}?v=1">
+        <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('favicon-16x16.png') }}?v=1">
+        <link rel="icon" type="image/png" href="{{ asset('logo.png') }}?v=1">
+        <link rel="shortcut icon" href="{{ asset('favicon.ico') }}?v=1">
+        <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}?v=1">
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800&display=swap" rel="stylesheet" />
@@ -39,8 +46,8 @@
                             </svg>
                         </button>
                         <div class="flex items-center space-x-2">
-                            <div class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-xs shadow-sm">
-                                M
+                            <div class="w-8 h-8 rounded-lg bg-white p-1 flex items-center justify-center shadow-xs border border-slate-200 shrink-0">
+                                <img src="{{ asset('logo.png') }}" alt="Logo WOLA MUSASHI" class="max-h-full max-w-full object-contain">
                             </div>
                             <span class="font-bold text-xs tracking-tight text-slate-900 dark:text-white">WOLA MUSASHI</span>
                         </div>

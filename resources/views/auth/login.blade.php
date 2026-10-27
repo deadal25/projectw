@@ -2,8 +2,8 @@
     <div class="bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl p-6 sm:p-8 md:p-10 shadow-xl shadow-slate-200/50 backdrop-blur-xl">
         <!-- Header Branding WOLA MUSASHI -->
         <div class="text-center mb-6 sm:mb-8">
-            <div class="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/25 mb-3 font-black text-xl sm:text-2xl tracking-wider">
-                W
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white shadow-lg shadow-blue-500/10 mb-3 p-2.5 border border-slate-200/80">
+                <img src="{{ asset('logo.png') }}" alt="Logo WOLA MUSASHI" class="max-h-full max-w-full object-contain">
             </div>
             <h1 class="text-xl sm:text-2xl 2xl:text-3xl font-extrabold text-slate-900 tracking-tight">WOLA MUSASHI</h1>
             <p class="text-xs sm:text-sm font-bold text-blue-600 uppercase tracking-widest mt-1">PORTAL WOLA</p>
