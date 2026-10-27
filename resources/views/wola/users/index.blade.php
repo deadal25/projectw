@@ -14,9 +14,24 @@
                 </p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+                <!-- Tombol Sinkronkan Spreadsheet -->
+                <form method="POST" action="{{ route('wola.users.sync-sheet') }}" class="inline">
+                    @csrf
+                    <input type="hidden" name="tab" :value="activeTab">
+                    <button type="submit"
+                            onclick="this.disabled=true; this.innerHTML='<span class=\'animate-spin inline-block me-1.5\'>↻</span> Menyinkronkan...'; this.form.submit();"
+                            class="inline-flex items-center px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-md shadow-amber-500/30 transition cursor-pointer"
+                            title="Tarik data terbaru dari Google Spreadsheet (Kelompok, Pengguna, dan tim_penilai)">
+                        <svg class="w-4 h-4 me-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        Sinkronkan Spreadsheet
+                    </button>
+                </form>
+
                 <!-- Tombol Tambah Penilai Cepat (Tanpa Dobel +) -->
                 <button type="button" @click="openAddAssessor()"
-                        class="inline-flex items-center px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/30 transition">
+                        class="inline-flex items-center px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/30 transition cursor-pointer">
                     <svg class="w-4 h-4 me-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
                     </svg>
@@ -38,6 +53,9 @@
     <div class="py-8"
          x-data="{
              activeTab: '{{ request('tab', 'users') }}',
+             assessorSearch: '',
+             assessorGroupFilter: '',
+             assessorRoleFilter: '',
              expandedGroups: [{{ request('group_id') ? (int)request('group_id') : '' }}],
              toggleGroup(id) {
                  if (this.expandedGroups.includes(id)) {
@@ -177,26 +195,28 @@
                     </div>
                 </div>
 
-                <!-- Total Penilai -->
-                <div class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center space-x-3.5 sm:space-x-4">
-                    <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <!-- Total Penilai (Klik untuk buka tab Penilai) -->
+                <div @click="activeTab = 'assessors'"
+                     class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center space-x-3.5 sm:space-x-4 cursor-pointer hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-md transition group"
+                     title="Klik untuk membuka tab Daftar Seluruh Tim Penilai">
+                    <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
                         </svg>
                     </div>
                     <div class="min-w-0">
                         <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">Tim Penilai</p>
-                        <p class="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white truncate">{{ $totalAssessors }} Penilai</p>
+                        <p class="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white truncate group-hover:text-amber-600 transition">{{ $totalAssessors }} Penilai</p>
                     </div>
                 </div>
             </div>
 
             <!-- TAB NAVIGASI UTAMA -->
-            <div class="flex items-center space-x-2 border-b border-slate-200 dark:border-slate-700 pb-3">
+            <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
                 <button type="button"
                         @click="activeTab = 'users'"
                         :class="activeTab === 'users' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'"
-                        class="inline-flex items-center px-4 py-2 rounded-xl text-xs font-bold transition">
+                        class="inline-flex items-center px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer">
                     <svg class="w-4 h-4 me-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
                     </svg>
@@ -204,9 +224,19 @@
                 </button>
 
                 <button type="button"
+                        @click="activeTab = 'assessors'"
+                        :class="activeTab === 'assessors' ? 'bg-amber-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'"
+                        class="inline-flex items-center px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer">
+                    <svg class="w-4 h-4 me-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                    </svg>
+                    Daftar Seluruh Tim Penilai ({{ $totalAssessors }})
+                </button>
+
+                <button type="button"
                         @click="activeTab = 'groups'"
                         :class="activeTab === 'groups' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'"
-                        class="inline-flex items-center px-4 py-2 rounded-xl text-xs font-bold transition">
+                        class="inline-flex items-center px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer">
                     <svg class="w-4 h-4 me-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
                     </svg>
@@ -325,6 +355,19 @@
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                                                     </svg>
                                                 </button>
+
+                                                @if($user->group->assessors->isNotEmpty())
+                                                    <div class="flex flex-wrap items-center gap-1 mt-1.5 max-w-xs">
+                                                        @foreach($user->group->assessors->take(3) as $ass)
+                                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] {{ $ass->is_leader ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 font-semibold' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' }}" title="{{ $ass->employee?->fullname }}">
+                                                                {{ $ass->is_leader ? '★ ' : '' }}{{ \Illuminate\Support\Str::limit($ass->employee?->fullname ?? 'Penilai', 14) }}
+                                                            </span>
+                                                        @endforeach
+                                                        @if($user->group->assessors->count() > 3)
+                                                            <span class="text-[10px] text-slate-400 font-bold" title="Klik tombol kelompok untuk melihat semua penilai">+{{ $user->group->assessors->count() - 3 }} lainnya</span>
+                                                        @endif
+                                                    </div>
+                                                @endif
                                             @else
                                                 <span class="text-xs text-slate-400 italic">Semua Kelompok</span>
                                             @endif
@@ -530,7 +573,199 @@
             </div>
 
             <!-- ========================================================================= -->
-            <!-- TAB 2: STRUKTUR KELOMPOK & TIM PENILAI LENGKAP -->
+            <!-- TAB 2: DAFTAR SELURUH TIM PENILAI (DARI DATABASE & SPREADSHEET TIM_PENILAI) -->
+            <!-- ========================================================================= -->
+            <div x-show="activeTab === 'assessors'" class="space-y-6">
+
+                <!-- Panel Filter & Search Penilai -->
+                <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                                <span>Daftar Seluruh Tim Penilai</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+                                    {{ $allAssessors->count() }} Penilai
+                                </span>
+                            </h3>
+                            <p class="text-xs text-slate-500 mt-0.5">
+                                Terhubung langsung dengan sheet <strong>tim_penilai</strong> di Google Spreadsheet mencakup seluruh Ketua dan Anggota Penilai.
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                            <button type="button" @click="openAddAssessor()"
+                                    class="inline-flex items-center px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer">
+                                <svg class="w-4 h-4 me-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                </svg>
+                                Tambah Penilai Baru
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100 dark:border-slate-700/80">
+                        <!-- Input Cari Penilai -->
+                        <div class="relative">
+                            <input type="text"
+                                   x-model="assessorSearch"
+                                   placeholder="Cari nama, NRP, dept, plant, atau kelompok..."
+                                   class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent transition">
+                            <button type="button" x-show="assessorSearch" @click="assessorSearch = ''"
+                                    class="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600">✕</button>
+                        </div>
+
+                        <!-- Dropdown Filter Kelompok -->
+                        <div>
+                            <select x-model="assessorGroupFilter"
+                                    class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent transition">
+                                <option value="">-- Semua Kelompok (1 - {{ $groups->count() }}) --</option>
+                                @foreach($groups as $grp)
+                                    <option value="{{ $grp->id }}">
+                                        Kelompok {{ $grp->number }}: {{ $grp->name }} ({{ $grp->assessors->count() }} penilai)
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <!-- Dropdown Filter Status / Role -->
+                        <div>
+                            <select x-model="assessorRoleFilter"
+                                    class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent transition">
+                                <option value="">-- Semua Peran (Ketua & Anggota) --</option>
+                                <option value="1">Hanya Ketua Kelompok (★ Ketua)</option>
+                                <option value="0">Hanya Anggota Penilai</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabel Seluruh Penilai -->
+                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    <th class="py-3 px-4 w-12 text-center">No</th>
+                                    <th class="py-3 px-4">Status & NRP</th>
+                                    <th class="py-3 px-4">Nama Lengkap Penilai</th>
+                                    <th class="py-3 px-4">Kelompok Kerja (Area WLA)</th>
+                                    <th class="py-3 px-4">Dept & Plant</th>
+                                    <th class="py-3 px-4">Progres Penilaian</th>
+                                    <th class="py-3 px-4 text-center w-28">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
+                                @forelse($allAssessors as $index => $assessor)
+                                    @php
+                                        $prog = $assessor->getProgressData();
+                                        $empName = $assessor->employee?->fullname ?? 'Karyawan Tidak Ditemukan';
+                                        $empNrp = $assessor->employee?->nrp ?? '-';
+                                        $empDept = $assessor->employee?->dept ?? '-';
+                                        $empPlant = $assessor->employee?->plant ?? '-';
+                                        $grpNum = $assessor->group?->number ?? 0;
+                                        $grpName = $assessor->group?->name ?? 'Tanpa Kelompok';
+                                        $grpId = $assessor->group_id ?? 0;
+                                        $isLeaderVal = $assessor->is_leader ? '1' : '0';
+                                        $searchString = strtolower("{$empName} {$empNrp} {$empDept} {$empPlant} kelompok {$grpNum} {$grpName}");
+                                    @endphp
+                                    <tr x-show="(assessorGroupFilter === '' || assessorGroupFilter == '{{ $grpId }}') &&
+                                                (assessorRoleFilter === '' || assessorRoleFilter == '{{ $isLeaderVal }}') &&
+                                                (assessorSearch === '' || '{{ addslashes($searchString) }}'.includes(assessorSearch.toLowerCase().trim()))"
+                                        class="hover:bg-slate-50/60 dark:hover:bg-slate-900/40 transition">
+                                        <td class="py-3 px-4 text-center font-mono text-slate-400">
+                                            {{ $index + 1 }}
+                                        </td>
+                                        <td class="py-3 px-4">
+                                            <div class="flex items-center space-x-2">
+                                                @if($assessor->is_leader)
+                                                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+                                                        ★ Ketua
+                                                    </span>
+                                                @else
+                                                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                                                        Penilai
+                                                    </span>
+                                                @endif
+                                                <span class="font-mono font-bold text-slate-700 dark:text-slate-300">{{ $empNrp }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="py-3 px-4">
+                                            <div class="font-bold text-slate-900 dark:text-white text-sm">
+                                                {{ $empName }}
+                                            </div>
+                                        </td>
+                                        <td class="py-3 px-4">
+                                            @if($assessor->group)
+                                                <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200/80 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
+                                                    Kelompok {{ $grpNum }}: {{ $grpName }}
+                                                </span>
+                                            @else
+                                                <span class="text-xs text-slate-400 italic">Belum ditentukan</span>
+                                            @endif
+                                        </td>
+                                        <td class="py-3 px-4 text-slate-500">
+                                            <div class="font-medium text-slate-700 dark:text-slate-300">{{ $empDept }}</div>
+                                            <div class="text-[10px] text-slate-400">{{ $empPlant }}</div>
+                                        </td>
+                                        <td class="py-3 px-4">
+                                            <div class="flex items-center space-x-2">
+                                                <div class="w-20 bg-slate-100 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                                                    <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {{ $prog['percentage'] }}%"></div>
+                                                </div>
+                                                <span class="font-bold text-slate-700 dark:text-slate-300">{{ $prog['percentage'] }}%</span>
+                                                <span class="text-[10px] text-slate-400">({{ $prog['checked'] }}/{{ $prog['target'] }})</span>
+                                            </div>
+                                        </td>
+                                        <td class="py-3 px-4 text-center">
+                                            <div class="flex items-center justify-center space-x-1.5">
+                                                <!-- Edit Penilai -->
+                                                <button type="button"
+                                                        @click="openEditAssessor({{ $assessor->id }}, {{ $assessor->group_id ?? 0 }}, '{{ addslashes($grpName) }}', '{{ addslashes($empName) }}', '{{ addslashes($empNrp) }}', '{{ addslashes($empDept) }}', '{{ addslashes($empPlant) }}', {{ $assessor->is_leader ? 'true' : 'false' }})"
+                                                        class="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                                                        title="Edit Data Penilai">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                                                    </svg>
+                                                </button>
+
+                                                @if(!$assessor->is_leader && $assessor->group)
+                                                    <!-- Hapus Penilai -->
+                                                    <form method="POST" action="{{ route('wola.groups.assessors.remove', [$assessor->group, $assessor]) }}"
+                                                          onsubmit="return confirm('Apakah Anda yakin ingin menghapus penilai {{ addslashes($empName) }} dari kelompok ini?');"
+                                                          class="inline">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="submit"
+                                                                class="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                                                                title="Hapus Penilai">
+                                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                            </svg>
+                                                        </button>
+                                                    </form>
+                                                @else
+                                                    <span class="px-2 py-0.5 text-[10px] font-semibold text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-md italic" title="Ketua dikelola melalui akun Ketua">
+                                                        ★ Ketua
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="7" class="py-10 text-center text-slate-500 dark:text-slate-400">
+                                            Belum ada data penilai terdaftar. Silakan klik "Sinkronkan Spreadsheet" atau "Tambah Penilai".
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ========================================================================= -->
+            <!-- TAB 3: STRUKTUR KELOMPOK & TIM PENILAI LENGKAP -->
             <!-- ========================================================================= -->
             <div x-show="activeTab === 'groups'" class="space-y-4">
                 <div class="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">

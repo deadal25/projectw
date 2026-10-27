@@ -265,12 +265,19 @@ class GroupController extends Controller
             'threshold_lagging' => $validated['threshold_lagging'] ?? $group->threshold_lagging ?? 40,
         ]);
 
-        // Hubungkan akun Ketua jika dipilih atau kosongkan jika dilepas
+        // Hubungkan akun Ketua jika dipilih atau kosongkan jika dilepas secara eksplisit
         if (!empty($validated['leader_user_id'])) {
             User::where('group_id', $group->id)->where('id', '!=', $validated['leader_user_id'])->update(['group_id' => null]);
             User::where('id', $validated['leader_user_id'])->update(['group_id' => $group->id]);
-        } else {
-            User::where('group_id', $group->id)->update(['group_id' => null]);
+        } elseif ($request->has('leader_user_id') && $request->input('leader_user_id') === '') {
+            $existingLeader = User::where('group_id', $group->id)->first();
+            if ($existingLeader) {
+                // Periksa apakah ada penilai ketua aktif di tim_penilai yang terhubung ke akun ini
+                $hasActiveLeaderAssessor = GroupAssessor::where('group_id', $group->id)->where('is_leader', true)->exists();
+                if (!$hasActiveLeaderAssessor) {
+                    $existingLeader->update(['group_id' => null]);
+                }
+            }
         }
 
         // Sinkronkan penilai ketua jika ada

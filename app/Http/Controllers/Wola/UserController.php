@@ -32,11 +32,47 @@ class UserController extends Controller
         $roleFilter = $request->input('role');
         $search = $request->input('search');
 
-        // Pastikan seluruh akun Ketua kelompok otomatis terdaftar sebagai 1 penilai di kelompoknya
+        // 1. Auto-heal: Pastikan akun Ketua yang belum memiliki group_id otomatis terhubung ke kelompoknya
+        $unlinkedLeaders = User::role('ketua')->whereNull('group_id')->get();
+        foreach ($unlinkedLeaders as $uLead) {
+            $matchedGroup = null;
+            if (!empty($uLead->username)) {
+                $grpNum = array_search($uLead->username, Group::$groupLeaderNrps, true);
+                if ($grpNum) {
+                    $matchedGroup = Group::where('number', $grpNum)->first();
+                }
+            }
+            if (!$matchedGroup) {
+                $assLead = GroupAssessor::where('is_leader', true)
+                    ->whereHas('employee', function ($eq) use ($uLead) {
+                        $eq->where('nrp', $uLead->username)
+                           ->orWhereRaw('LOWER(fullname) = LOWER(?)', [trim($uLead->name)]);
+                    })->first();
+                if ($assLead) {
+                    $matchedGroup = Group::find($assLead->group_id);
+                }
+            }
+            if ($matchedGroup) {
+                $uLead->update(['group_id' => $matchedGroup->id]);
+            }
+        }
+
+        // 2. Pastikan seluruh akun Ketua kelompok otomatis terdaftar sebagai penilai ketua di kelompoknya
         $groupsWithLeader = Group::has('leader')->with('leader')->get();
         foreach ($groupsWithLeader as $grp) {
             $grp->syncLeaderAssessor();
         }
+
+        // 3. Muat seluruh daftar penilai untuk tab 'Daftar Seluruh Penilai'
+        $allAssessors = GroupAssessor::with(['group', 'employee'])
+            ->leftJoin('groups', 'group_assessors.group_id', '=', 'groups.id')
+            ->leftJoin('employees', 'group_assessors.employee_id', '=', 'employees.id')
+            ->select('group_assessors.*')
+            ->orderByRaw('CASE WHEN groups.number IS NOT NULL THEN 0 ELSE 1 END')
+            ->orderBy('groups.number', 'asc')
+            ->orderBy('group_assessors.is_leader', 'desc')
+            ->orderBy('employees.fullname', 'asc')
+            ->get();
 
         $query = User::with(['roles', 'group.assessors.employee', 'employee'])
             ->leftJoin('groups', 'users.group_id', '=', 'groups.id')
@@ -60,7 +96,7 @@ class UserController extends Controller
             });
         }
 
-        // Selalu urutkan mulai dari Kelompok 1, 2, ..., 12, lalu disusul akun tanpa kelompok (admin/superadmin)
+        // Selalu urutkan mulai dari Kelompok 1, 2, ..., 13, lalu disusul akun tanpa kelompok (admin/superadmin)
         $users = $query->orderByRaw('CASE WHEN groups.number IS NOT NULL THEN 0 ELSE 1 END')
             ->orderBy('groups.number', 'asc')
             ->orderBy('users.name', 'asc')
@@ -79,6 +115,7 @@ class UserController extends Controller
             'users',
             'groups',
             'allEmployees',
+            'allAssessors',
             'roleFilter',
             'search',
             'totalSuperadmin',
@@ -472,5 +509,34 @@ class UserController extends Controller
             : "Akun {$name} berhasil dihapus.{$sheetSyncNote}";
 
         return redirect()->route('wola.users.index')->with('success', $successMsg);
+    }
+
+    /**
+     * Sinkronkan Pengguna & Tim Penilai langsung dari Google Spreadsheet
+     */
+    public function syncFromSheet(Request $request)
+    {
+        try {
+            $rGrp = $this->googleSheetService->syncGroups();
+            $rUsers = $this->googleSheetService->syncUsers();
+            $rAss = $this->googleSheetService->syncAssessors();
+
+            $totalAdded = ($rGrp['added'] ?? 0) + ($rUsers['added'] ?? 0) + ($rAss['added'] ?? 0);
+            $totalUpdated = ($rGrp['updated'] ?? 0) + ($rUsers['updated'] ?? 0) + ($rAss['updated'] ?? 0);
+
+            // Auto-heal relasi ketua
+            $allGroups = Group::all();
+            foreach ($allGroups as $grp) {
+                $grp->syncLeaderAssessor();
+            }
+
+            $tab = $request->input('tab', 'assessors');
+
+            return redirect()->route('wola.users.index', ['tab' => $tab])
+                ->with('success', "Sinkronisasi berhasil! {$totalAdded} data ditambahkan, {$totalUpdated} diperbarui langsung dari Google Spreadsheet (Kelompok, Pengguna, dan tim_penilai).");
+        } catch (\Exception $e) {
+            return redirect()->route('wola.users.index')
+                ->with('error', "Gagal menyinkronkan data dari Google Spreadsheet: " . $e->getMessage());
+        }
     }
 }

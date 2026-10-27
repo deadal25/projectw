@@ -56,7 +56,7 @@
                                 class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
                             <option value="">-- Belum Ditentukan / Kosongkan --</option>
                             @foreach($potentialLeaders as $userKetua)
-                                <option value="{{ $userKetua->id }}" {{ $group->leader && $group->leader->id == $userKetua->id ? 'selected' : '' }}>
+                                <option value="{{ $userKetua->id }}" {{ ($group->leader && $group->leader->id == $userKetua->id) || ($userKetua->group_id == $group->id) ? 'selected' : '' }}>
                                     {{ $userKetua->name }} ({{ $userKetua->email }})
                                 </option>
                             @endforeach

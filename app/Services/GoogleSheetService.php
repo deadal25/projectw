@@ -502,6 +502,124 @@ class GoogleSheetService
     }
 
     /**
+     * Sinkronkan Data Akun Pengguna dari Google Sheet (tab 'Pengguna')
+     */
+    public function syncUsers(): array
+    {
+        $rows = [];
+        try {
+            $rows = $this->fetchSheetRows('Pengguna');
+        } catch (\Exception $e) {
+            try {
+                $rows = $this->fetchSheetRows('Users');
+            } catch (\Exception $ex) {
+                return [
+                    'success' => false,
+                    'message' => "Tab 'Pengguna' tidak ditemukan di Google Sheet.",
+                    'added' => 0,
+                    'updated' => 0,
+                ];
+            }
+        }
+
+        if (empty($rows)) {
+            return [
+                'success' => false,
+                'message' => "Tab 'Pengguna' belum memiliki baris data.",
+                'added' => 0,
+                'updated' => 0,
+            ];
+        }
+
+        $added = 0;
+        $updated = 0;
+
+        foreach ($rows as $row) {
+            $name = null;
+            $username = null;
+            $email = null;
+            $roleStr = 'ketua';
+            $kelompokStr = null;
+            $password = '123456';
+
+            foreach ($row as $k => $v) {
+                $v = trim((string)$v);
+                if (empty($v)) continue;
+                if (str_contains($k, 'nama')) $name = $v;
+                if (str_contains($k, 'username')) $username = $v;
+                if (str_contains($k, 'email')) $email = $v;
+                if (str_contains($k, 'role')) $roleStr = strtolower($v);
+                if (str_contains($k, 'kelompok')) $kelompokStr = $v;
+                if (str_contains($k, 'password')) $password = $v;
+            }
+
+            if (!$name || (!$email && !$username)) {
+                continue;
+            }
+
+            if (!$email && $username) {
+                $cleanU = preg_replace('/[^a-zA-Z0-9]/', '', (string)$username);
+                $email = "user_{$cleanU}@musashi.co.id";
+            }
+
+            $cleanGrpNum = $kelompokStr ? preg_replace('/[^0-9]/', '', $kelompokStr) : null;
+            $group = $cleanGrpNum ? \App\Models\Group::where('number', (int)$cleanGrpNum)->first() : null;
+
+            $validRole = in_array($roleStr, ['superadmin', 'admin', 'ketua']) ? $roleStr : 'ketua';
+
+            $user = \App\Models\User::where('email', trim($email))
+                ->orWhere(function ($q) use ($username) {
+                    if ($username) $q->where('username', trim($username));
+                })
+                ->first();
+
+            $employeeId = null;
+            if ($username) {
+                $emp = \App\Models\Employee::where('nrp', trim($username))->first();
+                if ($emp) $employeeId = $emp->id;
+            }
+            if (!$employeeId && $name) {
+                $emp = \App\Models\Employee::where('fullname', trim($name))->first();
+                if ($emp) $employeeId = $emp->id;
+            }
+
+            $userData = [
+                'name' => trim($name),
+                'email' => trim($email),
+                'username' => $username ? trim($username) : null,
+                'group_id' => $validRole === 'ketua' && $group ? $group->id : null,
+                'employee_id' => $employeeId,
+                'is_active' => true,
+            ];
+
+            if ($user) {
+                $user->update($userData);
+                if (!$user->hasRole($validRole)) {
+                    $user->syncRoles([$validRole]);
+                }
+                $updated++;
+            } else {
+                $userData['password'] = \Illuminate\Support\Facades\Hash::make(trim($password) ?: '123456');
+                $user = \App\Models\User::create($userData);
+                $user->assignRole($validRole);
+                $added++;
+            }
+
+            if ($group && $validRole === 'ketua') {
+                $group->syncLeaderAssessor();
+            }
+        }
+
+        return [
+            'success' => true,
+            'added' => $added,
+            'updated' => $updated,
+            'total' => $added + $updated,
+            'message' => "Sinkronisasi akun pengguna berhasil: {$added} ditambah, {$updated} diperbarui.",
+        ];
+    }
+
+    /**
      * Cari nilai pada row dengan berbagai alternatif nama kolom
      */
     protected function findValue(array $row, array $keys): ?string
