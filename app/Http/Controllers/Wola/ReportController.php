@@ -193,78 +193,164 @@ class ReportController extends Controller
             ];
         } else {
             // Mode 1 Kelompok Spesifik
+            $isAllJobs = ($request->input('job_id') === 'all' && Auth::user()->hasRole(['superadmin', 'admin']));
+            $singleGroupAllJobsData = [];
+
             if ($selectedGroup) {
                 $jobs = $selectedGroup->jobs;
                 $matrixAssessors = $selectedGroup->assessors;
                 $matrixEmployees = $selectedGroup->targetEmployees()->orderBy('employees.nrp')->get();
 
-                $jobId = $request->input('job_id', $jobs->first()->id ?? null);
-                if ($jobId) {
-                    $selectedJob = $jobs->firstWhere('id', $jobId) ?? $jobs->first();
-                }
+                if ($isAllJobs) {
+                    $selectedJob = null;
+                    $zeroCountTotal = 0;
+                    $oneCountTotal = 0;
+                    $twoOrPartialTotal = 0;
+                    $fullCountTotal = 0;
 
-                if ($selectedJob) {
-                    $assessments = Assessment::where('group_id', $selectedGroup->id)
-                        ->where('job_id', $selectedJob->id)
-                        ->get();
+                    foreach ($jobs as $j) {
+                        $jobAssessments = Assessment::where('group_id', $selectedGroup->id)
+                            ->where('job_id', $j->id)
+                            ->get();
 
-                    foreach ($assessments as $a) {
-                        $matrixData[$a->employee_id][$a->assessor_id] = [
-                            'checked' => true,
-                            'checked_at' => $a->checked_at ? $a->checked_at->format('d/m/Y H:i') : '✓',
+                        $jMatrix = [];
+                        foreach ($jobAssessments as $a) {
+                            $jMatrix[$a->employee_id][$a->assessor_id] = [
+                                'checked' => true,
+                                'checked_at' => $a->checked_at ? $a->checked_at->format('d/m/Y H:i') : '✓',
+                            ];
+                        }
+
+                        $totalTargetEmp = $matrixEmployees->count();
+                        $totalAssessorsCount = $matrixAssessors->count();
+
+                        $zeroCount = 0;
+                        $oneCount = 0;
+                        $twoOrPartialCount = 0;
+                        $fullCount = 0;
+
+                        foreach ($matrixEmployees as $emp) {
+                            $cnt = isset($jMatrix[$emp->id]) ? count($jMatrix[$emp->id]) : 0;
+                            if ($cnt === 0) {
+                                $zeroCount++;
+                            } elseif ($cnt === 1) {
+                                if ($totalAssessorsCount === 1) {
+                                    $fullCount++;
+                                } else {
+                                    $oneCount++;
+                                }
+                            } elseif ($cnt >= $totalAssessorsCount && $totalAssessorsCount > 0) {
+                                $fullCount++;
+                            } else {
+                                $twoOrPartialCount++;
+                            }
+                        }
+
+                        $zeroCountTotal += $zeroCount;
+                        $oneCountTotal += $oneCount;
+                        $twoOrPartialTotal += $twoOrPartialCount;
+                        $fullCountTotal += $fullCount;
+
+                        $singleGroupAllJobsData[$j->id] = [
+                            'job' => $j,
+                            'matrix' => $jMatrix,
+                            'stats' => [
+                                'total_employees' => $totalTargetEmp,
+                                'total_assessors' => $totalAssessorsCount,
+                                'zero' => $zeroCount,
+                                'zero_pct' => $totalTargetEmp > 0 ? round(($zeroCount / $totalTargetEmp) * 100, 1) : 0,
+                                'one' => $oneCount,
+                                'one_pct' => $totalTargetEmp > 0 ? round(($oneCount / $totalTargetEmp) * 100, 1) : 0,
+                                'two' => $twoOrPartialCount,
+                                'two_pct' => $totalTargetEmp > 0 ? round(($twoOrPartialCount / $totalTargetEmp) * 100, 1) : 0,
+                                'full' => $fullCount,
+                                'full_pct' => $totalTargetEmp > 0 ? round(($fullCount / $totalTargetEmp) * 100, 1) : 0,
+                            ],
                         ];
                     }
 
-                    $totalTargetEmp = $matrixEmployees->count();
-                    $totalAssessorsCount = $matrixAssessors->count();
-
-                    $zeroCount = 0;
-                    $oneCount = 0;
-                    $twoOrPartialCount = 0;
-                    $fullCount = 0;
-
-                    foreach ($matrixEmployees as $emp) {
-                        $cnt = isset($matrixData[$emp->id]) ? count($matrixData[$emp->id]) : 0;
-                        if ($cnt === 0) {
-                            $zeroCount++;
-                        } elseif ($cnt === 1) {
-                            if ($totalAssessorsCount === 1) {
-                                $fullCount++;
-                            } else {
-                                $oneCount++;
-                            }
-                        } elseif ($cnt >= $totalAssessorsCount && $totalAssessorsCount > 0) {
-                            $fullCount++;
-                        } else {
-                            $twoOrPartialCount++;
-                        }
-                    }
-
+                    $totalPossibleEvaluations = $jobs->count() * $matrixEmployees->count();
                     $jobMatrixStats = [
-                        'total_employees' => $totalTargetEmp,
-                        'total_assessors' => $totalAssessorsCount,
-                        'zero' => $zeroCount,
-                        'zero_pct' => $totalTargetEmp > 0 ? round(($zeroCount / $totalTargetEmp) * 100, 1) : 0,
-                        'one' => $oneCount,
-                        'one_pct' => $totalTargetEmp > 0 ? round(($oneCount / $totalTargetEmp) * 100, 1) : 0,
-                        'two' => $twoOrPartialCount,
-                        'two_pct' => $totalTargetEmp > 0 ? round(($twoOrPartialCount / $totalTargetEmp) * 100, 1) : 0,
-                        'full' => $fullCount,
-                        'full_pct' => $totalTargetEmp > 0 ? round(($fullCount / $totalTargetEmp) * 100, 1) : 0,
+                        'total_employees' => $matrixEmployees->count(),
+                        'total_assessors' => $matrixAssessors->count(),
+                        'zero' => $zeroCountTotal,
+                        'zero_pct' => $totalPossibleEvaluations > 0 ? round(($zeroCountTotal / $totalPossibleEvaluations) * 100, 1) : 0,
+                        'one' => $oneCountTotal,
+                        'one_pct' => $totalPossibleEvaluations > 0 ? round(($oneCountTotal / $totalPossibleEvaluations) * 100, 1) : 0,
+                        'two' => $twoOrPartialTotal,
+                        'two_pct' => $totalPossibleEvaluations > 0 ? round(($twoOrPartialTotal / $totalPossibleEvaluations) * 100, 1) : 0,
+                        'full' => $fullCountTotal,
+                        'full_pct' => $totalPossibleEvaluations > 0 ? round(($fullCountTotal / $totalPossibleEvaluations) * 100, 1) : 0,
                     ];
                 } else {
-                    $jobMatrixStats = [
-                        'total_employees' => 0,
-                        'total_assessors' => 0,
-                        'zero' => 0,
-                        'zero_pct' => 0,
-                        'one' => 0,
-                        'one_pct' => 0,
-                        'two' => 0,
-                        'two_pct' => 0,
-                        'full' => 0,
-                        'full_pct' => 0,
-                    ];
+                    $jobId = $request->input('job_id', $jobs->first()->id ?? null);
+                    if ($jobId) {
+                        $selectedJob = $jobs->firstWhere('id', $jobId) ?? $jobs->first();
+                    }
+
+                    if ($selectedJob) {
+                        $assessments = Assessment::where('group_id', $selectedGroup->id)
+                            ->where('job_id', $selectedJob->id)
+                            ->get();
+
+                        foreach ($assessments as $a) {
+                            $matrixData[$a->employee_id][$a->assessor_id] = [
+                                'checked' => true,
+                                'checked_at' => $a->checked_at ? $a->checked_at->format('d/m/Y H:i') : '✓',
+                            ];
+                        }
+
+                        $totalTargetEmp = $matrixEmployees->count();
+                        $totalAssessorsCount = $matrixAssessors->count();
+
+                        $zeroCount = 0;
+                        $oneCount = 0;
+                        $twoOrPartialCount = 0;
+                        $fullCount = 0;
+
+                        foreach ($matrixEmployees as $emp) {
+                            $cnt = isset($matrixData[$emp->id]) ? count($matrixData[$emp->id]) : 0;
+                            if ($cnt === 0) {
+                                $zeroCount++;
+                            } elseif ($cnt === 1) {
+                                if ($totalAssessorsCount === 1) {
+                                    $fullCount++;
+                                } else {
+                                    $oneCount++;
+                                }
+                            } elseif ($cnt >= $totalAssessorsCount && $totalAssessorsCount > 0) {
+                                $fullCount++;
+                            } else {
+                                $twoOrPartialCount++;
+                            }
+                        }
+
+                        $jobMatrixStats = [
+                            'total_employees' => $totalTargetEmp,
+                            'total_assessors' => $totalAssessorsCount,
+                            'zero' => $zeroCount,
+                            'zero_pct' => $totalTargetEmp > 0 ? round(($zeroCount / $totalTargetEmp) * 100, 1) : 0,
+                            'one' => $oneCount,
+                            'one_pct' => $totalTargetEmp > 0 ? round(($oneCount / $totalTargetEmp) * 100, 1) : 0,
+                            'two' => $twoOrPartialCount,
+                            'two_pct' => $totalTargetEmp > 0 ? round(($twoOrPartialCount / $totalTargetEmp) * 100, 1) : 0,
+                            'full' => $fullCount,
+                            'full_pct' => $totalTargetEmp > 0 ? round(($fullCount / $totalTargetEmp) * 100, 1) : 0,
+                        ];
+                    } else {
+                        $jobMatrixStats = [
+                            'total_employees' => 0,
+                            'total_assessors' => 0,
+                            'zero' => 0,
+                            'zero_pct' => 0,
+                            'one' => 0,
+                            'one_pct' => 0,
+                            'two' => 0,
+                            'two_pct' => 0,
+                            'full' => 0,
+                            'full_pct' => 0,
+                        ];
+                    }
                 }
             } else {
                 $jobMatrixStats = [
@@ -459,6 +545,8 @@ class ReportController extends Controller
             'isAdminOrSuper',
             'jobs',
             'selectedJob',
+            'isAllJobs',
+            'singleGroupAllJobsData',
             'matrixAssessors',
             'matrixEmployees',
             'matrixData',
@@ -552,7 +640,7 @@ class ReportController extends Controller
         }
 
         $jobId = $request->input('job_id');
-        $selectedJob = ($group && $jobId) ? $group->jobs->firstWhere('id', $jobId) : null;
+        $selectedJob = ($group && $jobId && $jobId !== 'all') ? $group->jobs->firstWhere('id', $jobId) : null;
 
         // Hitung progres
         $summary = [];

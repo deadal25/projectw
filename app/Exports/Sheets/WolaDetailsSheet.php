@@ -44,7 +44,7 @@ class WolaDetailsSheet implements FromCollection, WithTitle, WithHeadings, WithM
         if ($this->groupId && $this->groupId !== 'all' && is_numeric($this->groupId)) {
             $query->where('group_id', (int)$this->groupId);
         }
-        if ($this->jobId) {
+        if ($this->jobId && $this->jobId !== 'all') {
             $query->where('job_id', $this->jobId);
         }
         if ($this->assessorId) {

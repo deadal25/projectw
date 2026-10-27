@@ -134,8 +134,13 @@
                                     <label class="block text-[11px] font-bold text-slate-500 mb-1">Pilih Jabatan yang Dinilai:</label>
                                     <select name="job_id" onchange="this.form.submit()"
                                             class="px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500">
+                                        @if(Auth::user()->hasRole(['superadmin', 'admin']))
+                                            <option value="all" {{ ($isAllJobs ?? false) || request('job_id') === 'all' ? 'selected' : '' }}>
+                                                🌟 Semua Posisi Jabatan (Semuanya)
+                                            </option>
+                                        @endif
                                         @forelse($jobs as $j)
-                                            <option value="{{ $j->id }}" {{ $selectedJob && $selectedJob->id == $j->id ? 'selected' : '' }}>
+                                            <option value="{{ $j->id }}" {{ !($isAllJobs ?? false) && $selectedJob && $selectedJob->id == $j->id ? 'selected' : '' }}>
                                                 {{ $j->name }}
                                             </option>
                                         @empty
@@ -146,11 +151,11 @@
                             @endif
                         </form>
 
-                        @if(!$isAllGroups && $selectedGroup && $selectedJob)
+                        @if(!$isAllGroups && $selectedGroup)
                             <div class="text-right">
                                 <span class="text-xs text-slate-400 block">Jabatan Terpilih:</span>
                                 <strong class="text-sm font-bold text-blue-600 dark:text-blue-400">
-                                    {{ $selectedJob->name }}
+                                    {{ ($isAllJobs ?? false) ? '🌟 Semua Posisi Jabatan (Semuanya)' : ($selectedJob ? $selectedJob->name : '-') }}
                                 </strong>
                             </div>
                         @elseif($isAllGroups)
@@ -273,13 +278,34 @@
                                     </a>
                                 @endforeach
                             </div>
+
+                            @if(Auth::user()->hasRole(['superadmin', 'admin']))
+                                <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex flex-wrap items-center justify-between gap-2">
+                                    <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                        Pintasan Admin:
+                                    </span>
+                                    <div class="flex items-center gap-2">
+                                        <a href="{{ route('wola.reports.index', ['tab' => 'matrix', 'group_id' => 'all', 'job_id' => 'all']) }}"
+                                           class="px-3 py-1 text-xs font-bold rounded-xl {{ request('job_id') === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800' }} transition flex items-center gap-1.5 shadow-2xs">
+                                            <span>🌟 Tampilkan Semua Jabatan Sekaligus (Semua Kelompok)</span>
+                                        </a>
+                                        @if(request('job_id'))
+                                            <a href="{{ route('wola.reports.index', ['tab' => 'matrix', 'group_id' => 'all']) }}"
+                                               class="px-2.5 py-1 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition">
+                                                Reset
+                                            </a>
+                                        @endif
+                                    </div>
+                                </div>
+                            @endif
                         </div>
 
                         <!-- Matriks Seluruh 12 Kelompok -->
                         <div class="space-y-8">
                             @foreach($allGroupsMatrixData as $gData)
                                 <div id="kelompok-{{ $gData['group']->id }}"
-                                     x-data="{ activeJobId: '{{ $gData['firstJobId'] }}' }"
+                                     x-data="{ activeJobId: '{{ (request('job_id') === 'all' && Auth::user()->hasRole(['superadmin', 'admin'])) ? 'all' : (request('job_id') && $gData['jobs']->contains('id', request('job_id')) ? request('job_id') : $gData['firstJobId']) }}' }"
                                      class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden scroll-mt-24">
                                     
                                     <!-- Header Kelompok -->
@@ -322,6 +348,9 @@
                                                 </label>
                                                 <select x-model="activeJobId"
                                                         class="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 focus:ring-2 focus:ring-blue-500 shadow-2xs">
+                                                    @if(Auth::user()->hasRole(['superadmin', 'admin']))
+                                                        <option value="all">🌟 Semua Posisi Jabatan (Semuanya)</option>
+                                                    @endif
                                                     @foreach($gData['jobs'] as $j)
                                                         <option value="{{ $j->id }}">{{ $j->name }}</option>
                                                     @endforeach
@@ -340,14 +369,42 @@
                                             </div>
                                         </div>
 
+                                        <!-- Banner saat Mode Semua Jabatan Aktif -->
+                                        <div x-show="activeJobId === 'all'" class="px-5 py-2.5 bg-blue-50/70 dark:bg-blue-950/40 border-b border-blue-100 dark:border-blue-900/40 flex flex-wrap items-center justify-between text-xs text-blue-700 dark:text-blue-300 gap-2">
+                                            <div class="flex items-center gap-2 font-medium">
+                                                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                                                </svg>
+                                                <span>Menampilkan seluruh <strong>{{ $gData['jobs']->count() }} Posisi Jabatan</strong> pada kelompok ini.</span>
+                                            </div>
+                                            <span class="text-[11px] px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 font-bold border border-blue-200 dark:border-blue-800">
+                                                Mode Semuanya Aktif
+                                            </span>
+                                        </div>
+
                                         <!-- Render Tabel Matriks per Jabatan -->
                                         @foreach($gData['jobs'] as $j)
                                             @php
                                                 $jStats = $gData['jobStats'][$j->id] ?? null;
                                             @endphp
-                                            <div x-show="activeJobId == '{{ $j->id }}'" class="overflow-x-auto">
+                                            <div x-show="activeJobId === 'all' || activeJobId == '{{ $j->id }}'" 
+                                                 class="overflow-x-auto {{ !$loop->first ? 'border-t-2 border-slate-200 dark:border-slate-700' : '' }}">
                                                 @if($jStats)
-                                                    <div class="px-5 py-2.5 bg-slate-100/50 dark:bg-slate-900/20 border-b border-slate-200 dark:border-slate-700/60 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
+                                                    <div class="px-5 py-2.5 bg-slate-100/70 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700/60 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                                                            <span class="font-bold text-slate-700 dark:text-slate-300">Posisi:</span>
+                                                            <strong class="text-slate-900 dark:text-white font-black bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2.5 py-0.5 rounded-lg border border-blue-200 dark:border-blue-800/60">{{ $j->name }}</strong>
+                                                        </div>
+                                                        <div class="flex items-center gap-3 text-[11px]">
+                                                            <span>Lengkap: <strong class="text-emerald-600 dark:text-emerald-400">{{ $jStats['full'] }} Orang ({{ $jStats['full_pct'] }}%)</strong></span>
+                                                            <span>•</span>
+                                                            <span>Sebagian: <strong class="text-amber-600 dark:text-amber-400">{{ ($jStats['one'] ?? 0) + ($jStats['two'] ?? ($jStats['partial'] ?? 0)) }} Orang</strong></span>
+                                                            <span>•</span>
+                                                            <span>Belum: <strong class="text-rose-600 dark:text-rose-400">{{ $jStats['zero'] }} Orang ({{ $jStats['zero_pct'] }}%)</strong></span>
+                                                        </div>
+                                                    </div>
+                                                @endif
                                                         <div>
                                                             Posisi: <strong class="text-slate-800 dark:text-slate-200 font-bold">{{ $j->name }}</strong>
                                                         </div>
@@ -445,7 +502,7 @@
                                 </div>
                             @endforeach
                         </div>
-                    @elseif($selectedGroup && $selectedJob)
+                    @elseif($selectedGroup && ($selectedJob || ($isAllJobs ?? false)))
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <!-- 1. Belum Dinilai (Kosong / 0 Penilai) -->
                             <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-700 flex flex-col justify-between hover:shadow-md transition group">
@@ -570,7 +627,111 @@
                     @endif
 
                     <!-- Tabel Matriks -->
-                    @if($selectedGroup && $selectedJob)
+                    @if($selectedGroup && ($isAllJobs ?? false))
+                        <!-- Mode Semua Posisi Jabatan untuk 1 Kelompok Ini -->
+                        <div class="space-y-6">
+                            @foreach($singleGroupAllJobsData as $sJobId => $sJobInfo)
+                                @php
+                                    $sJob = $sJobInfo['job'];
+                                    $sMatrix = $sJobInfo['matrix'];
+                                    $sStats = $sJobInfo['stats'];
+                                @endphp
+                                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                                    <div class="px-5 py-3 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between text-xs gap-3">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                                            <span class="text-slate-500 font-medium">Posisi Jabatan:</span>
+                                            <strong class="text-slate-900 dark:text-white font-black bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2.5 py-0.5 rounded-lg border border-blue-200 dark:border-blue-800/60">{{ $sJob->name }}</strong>
+                                        </div>
+                                        <div class="flex items-center gap-3 text-[11px] text-slate-500">
+                                            <span>Lengkap: <strong class="text-emerald-600 dark:text-emerald-400">{{ $sStats['full'] }} Orang ({{ $sStats['full_pct'] }}%)</strong></span>
+                                            <span>•</span>
+                                            <span>Sebagian: <strong class="text-amber-600 dark:text-amber-400">{{ ($sStats['one'] ?? 0) + ($sStats['two'] ?? 0) }} Orang</strong></span>
+                                            <span>•</span>
+                                            <span>Belum: <strong class="text-rose-600 dark:text-rose-400">{{ $sStats['zero'] }} Orang ({{ $sStats['zero_pct'] }}%)</strong></span>
+                                        </div>
+                                    </div>
+
+                                    <div class="overflow-x-auto">
+                                        <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-xs text-left">
+                                            <thead class="bg-slate-100/80 dark:bg-slate-900 font-bold text-slate-700 dark:text-slate-300">
+                                                <tr>
+                                                    <th scope="col" class="py-3 px-4 sticky left-0 z-10 bg-slate-100 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 min-w-[220px]">
+                                                        EMPLOYEENO & FULLNAME
+                                                    </th>
+                                                    @foreach($matrixAssessors as $assessor)
+                                                        <th scope="col" class="py-3 px-3 text-center whitespace-nowrap min-w-[120px]">
+                                                            <div class="font-bold line-clamp-1" title="{{ $assessor->employee ? $assessor->employee->fullname : 'Penilai' }}">
+                                                                {{ $assessor->employee ? $assessor->employee->fullname : 'Penilai' }}
+                                                            </div>
+                                                            <div class="text-[10px] font-mono text-slate-400 font-normal">
+                                                                {{ $assessor->employee ? $assessor->employee->nrp : '' }} {{ $assessor->is_leader ? '(Ketua)' : '' }}
+                                                            </div>
+                                                        </th>
+                                                    @endforeach
+                                                    <th scope="col" class="py-3 px-4 text-center whitespace-nowrap min-w-[100px] bg-slate-50 dark:bg-slate-900">
+                                                        Total Selesai
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-slate-200 dark:divide-slate-700/60 bg-white dark:bg-slate-800">
+                                                @forelse($matrixEmployees as $emp)
+                                                    @php
+                                                        $doneCount = 0;
+                                                        foreach ($matrixAssessors as $ass) {
+                                                            if (isset($sMatrix[$emp->id][$ass->id])) {
+                                                                $doneCount++;
+                                                            }
+                                                        }
+                                                        $allDone = ($doneCount === $matrixAssessors->count() && $matrixAssessors->count() > 0);
+                                                    @endphp
+                                                    <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-700/30 transition">
+                                                        <td class="py-3 px-4 sticky left-0 z-10 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">
+                                                            <div class="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                                                                <span class="font-mono text-blue-600 dark:text-blue-400 font-bold">{{ $emp->nrp }}</span>
+                                                                <span>{{ $emp->fullname }}</span>
+                                                            </div>
+                                                        </td>
+
+                                                        @foreach($matrixAssessors as $ass)
+                                                            @php
+                                                                $isCheck = isset($sMatrix[$emp->id][$ass->id]);
+                                                                $checkInfo = $isCheck ? $sMatrix[$emp->id][$ass->id]['checked_at'] : null;
+                                                            @endphp
+                                                            <td class="py-2.5 px-3 text-center align-middle">
+                                                                @if($isCheck)
+                                                                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-extrabold shadow-sm"
+                                                                          title="Dinilai pada {{ $checkInfo }}">
+                                                                        ✓
+                                                                    </span>
+                                                                @else
+                                                                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600">
+                                                                        -
+                                                                    </span>
+                                                                @endif
+                                                            </td>
+                                                        @endforeach
+
+                                                        <td class="py-2.5 px-4 text-center font-bold text-xs bg-slate-50/50 dark:bg-slate-900/40">
+                                                            <span class="px-2.5 py-1 rounded-full {{ $allDone ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' }}">
+                                                                {{ $doneCount }} / {{ $matrixAssessors->count() }}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                @empty
+                                                    <tr>
+                                                        <td colspan="{{ $matrixAssessors->count() + 2 }}" class="py-8 text-center text-slate-400">
+                                                            Belum ada target karyawan pada kelompok ini.
+                                                        </td>
+                                                    </tr>
+                                                @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @elseif($selectedGroup && $selectedJob)
                         <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                             <div class="p-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center text-xs">
                                 <div>
