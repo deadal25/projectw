@@ -17,15 +17,31 @@ class ProfileUpdateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:150'],
+            'username' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique(User::class)->ignore($this->user()->id),
+            ],
             'email' => [
                 'required',
                 'string',
                 'lowercase',
                 'email',
-                'max:255',
+                'max:150',
                 Rule::unique(User::class)->ignore($this->user()->id),
             ],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'name.required' => 'Nama lengkap wajib diisi.',
+            'username.unique' => 'NRP / Username ini sudah digunakan oleh akun lain.',
+            'email.required' => 'Alamat email wajib diisi.',
+            'email.unique' => 'Alamat email ini sudah digunakan oleh akun lain.',
         ];
     }
 }
