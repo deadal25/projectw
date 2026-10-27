@@ -29,6 +29,7 @@
         createModalOpen: false,
         editModalOpen: false,
         deleteModalOpen: false,
+        deleteConfirmationText: '',
         editGroup: { id: '', number: '', name: '', leader_id: '' },
         deleteGroup: { id: '', number: '', name: '', route: '' },
         openEdit(id, number, name, leaderId) {
@@ -47,6 +48,7 @@
                 name: name,
                 route: routeUrl
             };
+            this.deleteConfirmationText = '';
             this.deleteModalOpen = true;
         }
     }"
@@ -462,28 +464,64 @@
                         <div>
                             <h4 class="font-black text-base text-slate-900 dark:text-white">Hapus Kelompok Kerja?</h4>
                             <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                Apakah Anda yakin ingin menghapus permanen <strong class="text-slate-800 dark:text-slate-200">Kelompok <span x-text="deleteGroup.number"></span> (<span x-text="deleteGroup.name"></span>)</strong>?
+                                Apakah benar Anda ingin menghapus permanen <strong class="text-slate-800 dark:text-slate-200">Kelompok <span x-text="deleteGroup.number"></span> (<span x-text="deleteGroup.name"></span>)</strong>?
                             </p>
                         </div>
                     </div>
 
-                    <div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-xs text-rose-800 dark:text-rose-300 mb-5">
-                        <strong>Perhatian:</strong> Akun Ketua di Manajemen Akun, seluruh data jabatan, tim penilai, checklist verifikasi, dan riwayat terkait pada kelompok ini akan ikut dihapus secara permanen dari sistem.
+                    <!-- Peringatan Rinci Penghapusan Relasi Database & Spreadsheet -->
+                    <div class="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/80 text-xs text-rose-900 dark:text-rose-200 mb-4 space-y-2">
+                        <p class="font-bold flex items-center space-x-1.5 text-rose-700 dark:text-rose-300">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                            <span>Seluruh data terkait akan ikut terhapus di database & spreadsheet:</span>
+                        </p>
+                        <ul class="text-[11px] text-rose-800 dark:text-rose-300 space-y-1 ps-4 list-disc">
+                            <li><strong>Tab Kelompok</strong>: Baris data kelompok ini.</li>
+                            <li><strong>Tab tim_penilai</strong>: Nama Ketua dan seluruh anggota penilai kelompok.</li>
+                            <li><strong>Tab Pengguna</strong>: Akun login Ketua kelompok.</li>
+                            <li><strong>Tab Posisi_Job</strong>: Seluruh daftar jabatan / job di kelompok ini.</li>
+                            <li><strong>Tab Hasil_Penilaian</strong>: Seluruh checklist dan riwayat penilaian karyawan terkait.</li>
+                        </ul>
                     </div>
 
-                    <form method="POST" :action="deleteGroup.route" class="flex items-center justify-end space-x-2.5">
+                    <!-- Input Konfirmasi Ketik 'HAPUS' -->
+                    <div class="mb-5">
+                        <label for="confirm_delete_input" class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                            Untuk melanjutkan, ketik kata <span class="px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/70 text-rose-700 dark:text-rose-300 font-mono font-black text-xs border border-rose-200 dark:border-rose-800">HAPUS</span> di bawah ini:
+                        </label>
+                        <input type="text"
+                               id="confirm_delete_input"
+                               name="confirmation_text"
+                               x-model="deleteConfirmationText"
+                               placeholder="Ketik HAPUS di sini..."
+                               class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-black tracking-wider text-rose-600 dark:text-rose-400 placeholder:text-slate-400 focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                               required
+                               autocomplete="off">
+                        <p class="text-[11px] text-slate-400 mt-1" x-show="deleteConfirmationText.trim().toUpperCase() !== 'HAPUS'">
+                            Tombol konfirmasi akan aktif setelah Anda mengetik kata <strong>HAPUS</strong>.
+                        </p>
+                    </div>
+
+                    <form method="POST" :action="deleteGroup.route" @submit="if(deleteConfirmationText.trim().toUpperCase() !== 'HAPUS') { $event.preventDefault(); return false; }" class="flex items-center justify-end space-x-2.5">
                         @csrf
                         @method('DELETE')
+                        <input type="hidden" name="confirmation_text" :value="deleteConfirmationText">
                         <button type="button" @click="deleteModalOpen = false"
-                                class="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer">
+                                class="px-4 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600">
                             Batal
                         </button>
                         <button type="submit"
-                                class="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold rounded-xl shadow-md shadow-rose-600/30 transition flex items-center space-x-1.5 cursor-pointer">
+                                :disabled="deleteConfirmationText.trim().toUpperCase() !== 'HAPUS'"
+                                :class="deleteConfirmationText.trim().toUpperCase() === 'HAPUS' 
+                                    ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-600/30 cursor-pointer opacity-100' 
+                                    : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-50 shadow-none'"
+                                class="px-5 py-2.5 text-xs font-extrabold rounded-xl transition flex items-center space-x-1.5">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                             </svg>
-                            <span>Ya, Hapus Kelompok</span>
+                            <span>Saya Yakin, Hapus Semua</span>
                         </button>
                     </form>
                 </div>

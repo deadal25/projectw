@@ -886,7 +886,10 @@ class GoogleSheetService
                 'action' => 'delete',
                 'sheet' => 'Kelompok',
                 'nrp' => (string) $groupNumber,
+                'number' => (string) $groupNumber,
+                'group_number' => (string) $groupNumber,
                 'name' => $groupName,
+                'group_name' => $groupName,
             ];
 
             $response = Http::timeout(10)
@@ -896,6 +899,187 @@ class GoogleSheetService
             return ['success' => $response->successful(), 'configured' => true];
         } catch (\Exception $e) {
             Log::error("Exception in deleteGroup Google Sheets: " . $e->getMessage());
+            return ['success' => false, 'configured' => true, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Hapus kelompok secara cascade dari Google Spreadsheet (Kelompok, tim_penilai, Pengguna, Posisi_Job)
+     */
+    public function cascadeDeleteGroup(int|string $groupNumber, ?string $groupName = null, array $extra = []): array
+    {
+        $settings = $this->getSettings();
+        $webhookUrl = $settings['apps_script_url'] ?? null;
+
+        if (!$webhookUrl) {
+            return ['success' => false, 'configured' => false];
+        }
+
+        $leaderNames = array_values(array_unique(array_filter(array_map('trim', $extra['leader_names'] ?? []))));
+        $leaderEmails = array_values(array_unique(array_filter(array_map('trim', $extra['leader_emails'] ?? []))));
+        $leaderUsernames = array_values(array_unique(array_filter(array_map('trim', $extra['leader_usernames'] ?? []))));
+        $assessorNrps = array_values(array_unique(array_filter(array_map('trim', $extra['assessor_nrps'] ?? []))));
+        $assessorNames = array_values(array_unique(array_filter(array_map('trim', $extra['assessor_names'] ?? []))));
+        $jobNames = array_values(array_unique(array_filter(array_map('trim', $extra['job_names'] ?? []))));
+        $assessmentPairs = $extra['assessment_pairs'] ?? [];
+        $employeeNrps = array_values(array_unique(array_filter(array_map('trim', $extra['employee_nrps'] ?? []))));
+
+        $payload = [
+            'action' => 'cascade_delete_group',
+            'group_number' => (string) $groupNumber,
+            'number' => (string) $groupNumber,
+            'group_name' => $groupName,
+            'name' => $groupName,
+            'leader_names' => $leaderNames,
+            'leader_emails' => $leaderEmails,
+            'leader_usernames' => $leaderUsernames,
+            'assessor_nrps' => $assessorNrps,
+            'assessor_names' => $assessorNames,
+        ];
+
+        try {
+            // Gunakan timeout yang cukup dan tangani HTTP 302 dari Google Apps Script
+            $response = Http::timeout(15)
+                ->withOptions(['allow_redirects' => false])
+                ->post($webhookUrl, $payload);
+
+            $status = $response->status();
+            $body = null;
+
+            if ($status === 302) {
+                $location = $response->header('Location');
+                if ($location) {
+                    try {
+                        $echoRes = Http::timeout(8)->get($location);
+                        if ($echoRes->successful()) {
+                            $body = $echoRes->json();
+                        }
+                    } catch (\Exception $e) {
+                        Log::info("Apps Script 302 executed, echo read skipped: " . $e->getMessage());
+                    }
+                }
+            } elseif ($response->successful()) {
+                $body = $response->json();
+            }
+
+            // Jika webhook versi baru mendukung aksi cascade_delete_group dan sukses
+            if ($body && isset($body['status']) && $body['status'] === 'success') {
+                return [
+                    'success' => true,
+                    'configured' => true,
+                    'action' => 'cascade_deleted_group',
+                    'report' => $body['report'] ?? [],
+                    'message' => $body['message'] ?? 'Berhasil menghapus data kelompok secara menyeluruh dari spreadsheet.',
+                ];
+            }
+
+            // Jika response 302 tanpa error eksplisit 'Aksi tidak dikenal', anggap aksi cascade baru sukses
+            if ($status === 302 && (!$body || !str_contains($body['message'] ?? '', 'Aksi tidak dikenal'))) {
+                return [
+                    'success' => true,
+                    'configured' => true,
+                    'action' => 'cascade_deleted_group',
+                    'report' => $body['report'] ?? [],
+                    'message' => 'Berhasil mengirim perintah hapus kelompok secara cascade ke spreadsheet.',
+                ];
+            }
+
+            // Fallback cerdas: Jika Apps Script yang dideploy user masih versi lama (belum ada aksi cascade_delete_group)
+            // Jalankan penghapusan per-sheet secara terperinci
+            $fallbackReport = ['kelompok' => 0, 'tim_penilai' => 0, 'pengguna' => 0, 'posisi_job' => 0, 'hasil_penilaian' => 0, 'karyawan' => 0];
+
+            // 1. Hapus dari sheet Kelompok
+            $delGrp = $this->deleteGroup($groupNumber, $groupName);
+            if ($delGrp['success']) {
+                $fallbackReport['kelompok']++;
+            }
+
+            // 2. Hapus dari sheet tim_penilai (seluruh penilai & ketua)
+            $allNrps = array_values(array_unique(array_merge($assessorNrps, $leaderUsernames)));
+            $allNames = array_values(array_unique(array_merge($assessorNames, $leaderNames)));
+            $delAss = $this->deleteAssessor($groupNumber, '', '', $allNrps, true, $groupName, $allNames);
+            if ($delAss['success']) {
+                $fallbackReport['tim_penilai'] += ($delAss['deleted_count'] ?? 1);
+            }
+
+            // Kirim per-NRP dan per-Nama untuk kompatibilitas skrip Apps Script versi terdahulu
+            foreach ($allNrps as $nrp) {
+                if (!empty($nrp)) {
+                    $this->deleteAssessor($groupNumber, $nrp, '');
+                }
+            }
+            foreach ($allNames as $nm) {
+                if (!empty($nm)) {
+                    $this->deleteAssessor($groupNumber, '', $nm);
+                }
+            }
+
+            // 3. Hapus dari sheet Pengguna (akun ketua dan akun pada kelompok ini)
+            $delUserGrp = $this->deleteUser('', '', '', $groupNumber, $groupName);
+            if ($delUserGrp['success']) {
+                $fallbackReport['pengguna'] += ($delUserGrp['deleted_count'] ?? 1);
+            }
+
+            $maxLeaders = max(count($leaderNames), count($leaderEmails), count($leaderUsernames));
+            for ($i = 0; $i < $maxLeaders; $i++) {
+                $lName = $leaderNames[$i] ?? '';
+                $lEmail = $leaderEmails[$i] ?? null;
+                $lUser = $leaderUsernames[$i] ?? null;
+                if (!empty($lName) || !empty($lEmail) || !empty($lUser)) {
+                    $delU = $this->deleteUser($lName, $lEmail, $lUser, $groupNumber, $groupName);
+                    if ($delU['success']) {
+                        $fallbackReport['pengguna'] += ($delU['deleted_count'] ?? 1);
+                    }
+                }
+            }
+
+            // 4. Hapus dari sheet Posisi_Job (per jabatan dan all_group)
+            foreach ($jobNames as $jName) {
+                if (!empty($jName)) {
+                    $this->deleteJob($jName, $groupNumber);
+                    $fallbackReport['posisi_job']++;
+                }
+            }
+            $delJob = $this->deleteJob('', $groupNumber, null, true);
+            if ($delJob['success'] && empty($jobNames)) {
+                $fallbackReport['posisi_job']++;
+            }
+
+            // 5. Hapus dari sheet Hasil_Penilaian (per baris penilaian dan all_group)
+            foreach ($assessmentPairs as $pair) {
+                $pEmpName = $pair['employee_name'] ?? '';
+                $pEmpNrp = $pair['employee_nrp'] ?? null;
+                $pJob = $pair['job_name'] ?? '';
+                if (!empty($pEmpName) || !empty($pEmpNrp)) {
+                    $this->deleteAssessment($pEmpName, $pJob, null, (int)$groupNumber, $pEmpNrp, null);
+                    $fallbackReport['hasil_penilaian']++;
+                }
+            }
+            $delAssessments = $this->deleteGroupAssessments($groupNumber);
+            if ($delAssessments['success'] && empty($assessmentPairs)) {
+                $fallbackReport['hasil_penilaian']++;
+            }
+
+            // 6. Reset Area_WLA pada sheet Karyawan (tanpa menghapus baris karyawan)
+            foreach ($employeeNrps as $empNrp) {
+                $emp = \App\Models\Employee::where('nrp', $empNrp)->first();
+                if ($emp) {
+                    $empCopy = clone $emp;
+                    $empCopy->area_wla = '';
+                    $this->updateEmployee($empCopy);
+                    $fallbackReport['karyawan']++;
+                }
+            }
+
+            return [
+                'success' => true,
+                'configured' => true,
+                'action' => 'fallback_deleted',
+                'report' => $fallbackReport,
+                'message' => 'Kelompok berhasil dihapus secara bertahap dari spreadsheet.',
+            ];
+        } catch (\Exception $e) {
+            Log::error("Exception in cascadeDeleteGroup Google Sheets: " . $e->getMessage());
             return ['success' => false, 'configured' => true, 'error' => $e->getMessage()];
         }
     }
@@ -1262,7 +1446,7 @@ class GoogleSheetService
     /**
      * Hapus akun pengguna dari Google Spreadsheet (tab 'Pengguna')
      */
-    public function deleteUser(string $name, ?string $email = null, ?string $username = null, int|string|null $groupNumber = null): array
+    public function deleteUser(string $name, ?string $email = null, ?string $username = null, int|string|null $groupNumber = null, ?string $groupName = null): array
     {
         $settings = $this->getSettings();
         $webhookUrl = $settings['apps_script_url'] ?? null;
@@ -1280,6 +1464,7 @@ class GoogleSheetService
                 'username' => $username ? trim($username) : null,
                 'email' => $email ? trim($email) : null,
                 'group_number' => $groupNumber ? (string)$groupNumber : null,
+                'group_name' => $groupName ? trim($groupName) : null,
             ];
 
             $response = Http::timeout(10)
@@ -1331,7 +1516,7 @@ class GoogleSheetService
     /**
      * Hapus posisi job dari Google Spreadsheet (tab 'Posisi_Job')
      */
-    public function deleteJob(string $jobName, int|string $groupNumber, ?string $jobCode = null): array
+    public function deleteJob(string $jobName, int|string $groupNumber, ?string $jobCode = null, bool $allGroup = false): array
     {
         $settings = $this->getSettings();
         $webhookUrl = $settings['apps_script_url'] ?? null;
@@ -1350,6 +1535,11 @@ class GoogleSheetService
                 'job_code' => $jobCode,
                 'nrp' => trim($jobName),
             ];
+
+            if ($allGroup || empty(trim($jobName))) {
+                $payload['all_group'] = true;
+                $payload['delete_all'] = true;
+            }
 
             $response = Http::timeout(10)
                 ->withOptions(['allow_redirects' => true])
@@ -1475,7 +1665,7 @@ class GoogleSheetService
     /**
      * Hapus data penilai dari Google Spreadsheet (tab 'tim_penilai')
      */
-    public function deleteAssessor(int|string $groupNumber, ?string $nrp = null, ?string $name = null, array $allNrps = [], bool $allGroup = false): array
+    public function deleteAssessor(int|string $groupNumber, ?string $nrp = null, ?string $name = null, array $allNrps = [], bool $allGroup = false, ?string $groupName = null, array $allNames = []): array
     {
         $settings = $this->getSettings();
         $webhookUrl = $settings['apps_script_url'] ?? null;
@@ -1489,6 +1679,7 @@ class GoogleSheetService
                 'action' => 'delete',
                 'sheet' => 'tim_penilai',
                 'group_number' => (string) $groupNumber,
+                'group_name' => $groupName ? trim((string)$groupName) : null,
                 'nrp' => $nrp ? trim((string)$nrp) : '',
                 'name' => $name ? trim((string)$name) : '',
                 'fullname' => $name ? trim((string)$name) : '',
@@ -1496,10 +1687,15 @@ class GoogleSheetService
 
             if ($allGroup) {
                 $payload['all_group'] = true;
+                $payload['delete_all'] = true;
             }
 
             if (!empty($allNrps)) {
                 $payload['nrps'] = array_values(array_filter(array_map('trim', $allNrps)));
+            }
+
+            if (!empty($allNames)) {
+                $payload['names'] = array_values(array_filter(array_map('trim', $allNames)));
             }
 
             $response = Http::timeout(12)
@@ -1771,6 +1967,38 @@ class GoogleSheetService
             return ['success' => $response->successful(), 'configured' => true];
         } catch (\Exception $e) {
             Log::error("Exception in deleteAssessment Google Sheets: " . $e->getMessage());
+            return ['success' => false, 'configured' => true, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Hapus seluruh data penilaian kelompok dari Google Spreadsheet (tab 'Hasil_Penilaian')
+     */
+    public function deleteGroupAssessments(int|string $groupNumber): array
+    {
+        $settings = $this->getSettings();
+        $webhookUrl = $settings['apps_script_url'] ?? null;
+
+        if (!$webhookUrl) {
+            return ['success' => false, 'configured' => false];
+        }
+
+        try {
+            $payload = [
+                'action' => 'delete',
+                'sheet' => 'Hasil_Penilaian',
+                'group_number' => (string) $groupNumber,
+                'all_group' => true,
+                'delete_all' => true,
+            ];
+
+            $response = Http::timeout(12)
+                ->withOptions(['allow_redirects' => true])
+                ->post($webhookUrl, $payload);
+
+            return ['success' => $response->successful(), 'configured' => true];
+        } catch (\Exception $e) {
+            Log::error("Exception in deleteGroupAssessments Google Sheets: " . $e->getMessage());
             return ['success' => false, 'configured' => true, 'error' => $e->getMessage()];
         }
     }
@@ -2528,12 +2756,194 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 8. HAPUS BARIS SECARA CERDAS SESUAI TABEL SHEET
+    // 8. CASCADE HAPUS KELOMPOK KE SELURUH TAB (Kelompok, tim_penilai, Pengguna, Posisi_Job)
+    if (action === "cascade_delete_group" || action === "delete_group_cascade") {
+      var targetGroupNum = String(data.group_number || data.number || "").trim();
+      var cleanTargetGrp = targetGroupNum.replace(/[^0-9]/g, '');
+      var targetGroupName = String(data.group_name || data.name || "").trim().toLowerCase();
+
+      var leaderNames = data.leader_names || [];
+      var leaderEmails = data.leader_emails || [];
+      var leaderUsernames = data.leader_usernames || [];
+      var assessorNrps = data.assessor_nrps || [];
+      var assessorNames = data.assessor_names || [];
+
+      if (data.leader_name && leaderNames.indexOf(data.leader_name) === -1) leaderNames.push(data.leader_name);
+      if (data.leader_email && leaderEmails.indexOf(data.leader_email) === -1) leaderEmails.push(data.leader_email);
+      if (data.leader_username && leaderUsernames.indexOf(data.leader_username) === -1) leaderUsernames.push(data.leader_username);
+
+      var nrpLookup = {};
+      var nameLookup = {};
+      var emailLookup = {};
+
+      for (var k = 0; k < assessorNrps.length; k++) {
+        var n = String(assessorNrps[k]).trim().toLowerCase();
+        if (n !== "") {
+          nrpLookup[n] = true;
+          var cleanN = n.replace(/[^0-9]/g, '');
+          if (cleanN !== "") nrpLookup[cleanN] = true;
+        }
+      }
+      for (var k = 0; k < leaderUsernames.length; k++) {
+        var n = String(leaderUsernames[k]).trim().toLowerCase();
+        if (n !== "") {
+          nrpLookup[n] = true;
+          var cleanN = n.replace(/[^0-9]/g, '');
+          if (cleanN !== "") nrpLookup[cleanN] = true;
+        }
+      }
+
+      for (var k = 0; k < assessorNames.length; k++) {
+        var nm = String(assessorNames[k]).trim().toLowerCase();
+        if (nm !== "") nameLookup[nm] = true;
+      }
+      for (var k = 0; k < leaderNames.length; k++) {
+        var nm = String(leaderNames[k]).trim().toLowerCase();
+        if (nm !== "") nameLookup[nm] = true;
+      }
+
+      for (var k = 0; k < leaderEmails.length; k++) {
+        var em = String(leaderEmails[k]).trim().toLowerCase();
+        if (em !== "") emailLookup[em] = true;
+      }
+
+      var report = { kelompok: 0, tim_penilai: 0, pengguna: 0, posisi_job: 0, hasil_penilaian: 0, karyawan: 0 };
+
+      // A. HAPUS DARI TAB 'Kelompok'
+      var sheetKel = ss.getSheetByName("Kelompok");
+      if (sheetKel) {
+        var vals = sheetKel.getDataRange().getValues();
+        for (var i = vals.length - 1; i >= 1; i--) {
+          var colNum = String(vals[i][0] || "").trim();
+          var colName = String(vals[i][1] || "").trim().toLowerCase();
+          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+
+          var matchNum = (cleanTargetGrp !== "" && cleanColNum === cleanTargetGrp) || (targetGroupNum !== "" && colNum === targetGroupNum);
+          var matchName = (targetGroupName !== "" && (colName === targetGroupName || colName.indexOf(targetGroupName) !== -1 || targetGroupName.indexOf(colName) !== -1));
+
+          if (matchNum || matchName) {
+            sheetKel.deleteRow(i + 1);
+            report.kelompok++;
+          }
+        }
+      }
+
+      // B. HAPUS DARI TAB 'tim_penilai' (Ketua & seluruh penilai kelompok ini)
+      var sheetPenilai = ss.getSheetByName("tim_penilai");
+      if (sheetPenilai) {
+        var vals = sheetPenilai.getDataRange().getValues();
+        for (var i = vals.length - 1; i >= 1; i--) {
+          var colGrp = String(vals[i][0] || "").trim();
+          var colGrpName = String(vals[i][1] || "").trim().toLowerCase();
+          var colNrp = String(vals[i][2] || "").trim().toLowerCase();
+          var colName = String(vals[i][3] || "").trim().toLowerCase();
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+
+          var matchGrp = (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp) ||
+                         (targetGroupNum !== "" && colGrp === targetGroupNum) ||
+                         (targetGroupName !== "" && (colGrpName === targetGroupName || colGrpName.indexOf(targetGroupName) !== -1));
+          var matchPerson = nrpLookup[colNrp] === true || nameLookup[colName] === true;
+
+          if (matchGrp || matchPerson) {
+            sheetPenilai.deleteRow(i + 1);
+            report.tim_penilai++;
+          }
+        }
+      }
+
+      // C. HAPUS DARI TAB 'Pengguna' (Akun Ketua & akun kelompok ini)
+      var sheetPengguna = ss.getSheetByName("Pengguna");
+      if (sheetPengguna) {
+        var vals = sheetPengguna.getDataRange().getValues();
+        for (var i = vals.length - 1; i >= 1; i--) {
+          var colName = String(vals[i][0] || "").trim().toLowerCase();
+          var colUser = String(vals[i][1] || "").trim().toLowerCase();
+          var colMail = String(vals[i][2] || "").trim().toLowerCase();
+          var colGrp = String(vals[i][4] || "").trim().toLowerCase();
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+
+          var matchGrp = (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp + " ") !== -1 || colGrp === "kelompok " + cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp) !== -1)) ||
+                         (targetGroupName !== "" && (colGrp === targetGroupName || colGrp.indexOf(targetGroupName) !== -1));
+          var matchUser = (colMail !== "" && emailLookup[colMail] === true) ||
+                          (colUser !== "" && nrpLookup[colUser] === true) ||
+                          (colName !== "" && nameLookup[colName] === true);
+
+          if (matchGrp || matchUser) {
+            sheetPengguna.deleteRow(i + 1);
+            report.pengguna++;
+          }
+        }
+      }
+
+      // D. HAPUS DARI TAB 'Posisi_Job'
+      var sheetJob = ss.getSheetByName("Posisi_Job");
+      if (sheetJob) {
+        var vals = sheetJob.getDataRange().getValues();
+        for (var i = vals.length - 1; i >= 1; i--) {
+          var colGrp = String(vals[i][0] || "").trim();
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          if (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colGrp === targetGroupNum)) {
+            sheetJob.deleteRow(i + 1);
+            report.posisi_job++;
+          }
+        }
+      }
+
+      // E. HAPUS DARI TAB 'Hasil_Penilaian' (Seluruh hasil penilaian terkait kelompok ini)
+      var sheetHasil = ss.getSheetByName("Hasil_Penilaian");
+      if (sheetHasil) {
+        var vals = sheetHasil.getDataRange().getValues();
+        var is9Col = (vals.length > 0 && vals[0].length >= 9 && String(vals[0][2]).toLowerCase().indexOf("nrp") !== -1);
+        for (var i = vals.length - 1; i >= 1; i--) {
+          var colGrp = String(vals[i][1] || "").trim();
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var colAssNrp = is9Col ? String(vals[i][2] || "").trim().toLowerCase() : "";
+          var colAssName = String(vals[i][is9Col ? 3 : 2] || "").trim().toLowerCase();
+
+          var matchGrp = (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp) || (targetGroupNum !== "" && colGrp === targetGroupNum);
+          var matchAss = (colAssNrp !== "" && nrpLookup[colAssNrp] === true) || (colAssName !== "" && nameLookup[colAssName] === true);
+
+          if (matchGrp || matchAss) {
+            sheetHasil.deleteRow(i + 1);
+            report.hasil_penilaian++;
+          }
+        }
+      }
+
+      // F. BERSIHKAN Area_WLA DI TAB 'Karyawan' (KARYAWAN TIDAK DIHAPUS, HANYA AREA KELOMPOK DIKOSONGKAN)
+      var sheetKaryawan = ss.getSheetByName("Karyawan");
+      if (sheetKaryawan) {
+        var vals = sheetKaryawan.getDataRange().getValues();
+        for (var i = 1; i < vals.length; i++) {
+          var colArea = String(vals[i][5] || "").trim();
+          var colAreaLower = colArea.toLowerCase();
+          var cleanColArea = colAreaLower.replace(/[^0-9]/g, '');
+
+          var matchArea = (targetGroupName !== "" && (colAreaLower === targetGroupName || colAreaLower.indexOf(targetGroupName) !== -1)) ||
+                          (cleanTargetGrp !== "" && (cleanColArea === cleanTargetGrp || colAreaLower.indexOf("kelompok " + cleanTargetGrp) !== -1 || colAreaLower === "kelompok " + cleanTargetGrp));
+
+          if (matchArea) {
+            sheetKaryawan.getRange(i + 1, 6).setValue("");
+            report.karyawan++;
+          }
+        }
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        action: "cascade_deleted_group",
+        report: report,
+        message: "Berhasil menghapus Kelompok " + targetGroupNum + " dari Google Spreadsheet (Kelompok: " + report.kelompok + ", tim_penilai: " + report.tim_penilai + ", Pengguna: " + report.pengguna + ", Posisi_Job: " + report.posisi_job + ", Hasil_Penilaian: " + report.hasil_penilaian + ", Karyawan Area_WLA direset: " + report.karyawan + ")."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 9. HAPUS BARIS SECARA CERDAS SESUAI TABEL SHEET
     if (action === "delete") {
       var targetNrp = data.nrp !== undefined && data.nrp !== null ? String(data.nrp).trim() : "";
       var targetName = (data.fullname || data.name || (data.data ? data.data.fullname : "") || "").trim().toLowerCase();
       var targetJob = (data.job_name || "").trim().toLowerCase();
-      var targetGroup = data.group_number !== undefined && data.group_number !== null ? String(data.group_number).trim() : "";
+      var targetGroup = data.group_number !== undefined && data.group_number !== null ? String(data.group_number).trim() : (data.number !== undefined && data.number !== null ? String(data.number).trim() : "");
+      var targetGroupName = (data.group_name || "").trim().toLowerCase();
       var targetEmp = (data.employee_name || "").trim().toLowerCase();
       var targetUser = (data.username || "").trim().toLowerCase();
       var targetEmail = (data.email || "").trim().toLowerCase();
@@ -2554,6 +2964,13 @@ function doPost(e) {
         }
       }
 
+      var nameList = data.names || [];
+      var nameSet = {};
+      for (var k = 0; k < nameList.length; k++) {
+        var nStr = String(nameList[k]).trim().toLowerCase();
+        if (nStr !== "") nameSet[nStr] = true;
+      }
+
       var values = sheet.getDataRange().getValues();
       var deletedCount = 0;
 
@@ -2569,11 +2986,14 @@ function doPost(e) {
           var colGrp = rowValues[0] || "";
           var colJobCode = (rowValues[1] || "").toLowerCase();
           var colJobName = (rowValues[2] || "").toLowerCase();
+          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var cleanTargetGrp = targetGroup.replace(/[^0-9]/g, '');
 
           var matchJob = (targetJob !== "" && (colJobName === targetJob || colJobName.indexOf(targetJob) !== -1))
                       || (targetName !== "" && (colJobName === targetName || colJobName.indexOf(targetName) !== -1))
-                      || (targetNrp !== "" && (colJobName === targetNrp.toLowerCase() || colJobCode === targetNrp.toLowerCase()));
-          var matchGrp = (targetGroup === "" || colGrp === targetGroup);
+                      || (targetNrp !== "" && (colJobName === targetNrp.toLowerCase() || colJobCode === targetNrp.toLowerCase()))
+                      || (targetJob === "" && targetName === "" && targetNrp === "" && targetGroup !== "");
+          var matchGrp = (targetGroup === "" || colGrp === targetGroup || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp));
 
           if (matchJob && matchGrp) shouldDelete = true;
 
@@ -2586,12 +3006,19 @@ function doPost(e) {
           var q = targetNrp.toLowerCase();
           var cleanTargetGrp = targetGroup.replace(/[^0-9]/g, '');
           var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var tGrpName = targetGroupName || (data.group_name ? String(data.group_name).trim().toLowerCase() : "");
 
-          if ((q !== "" && (colName === q || colUser === q || colMail === q)) ||
-              (targetName !== "" && colName === targetName) ||
-              (targetUser !== "" && colUser === targetUser) ||
-              (targetEmail !== "" && colMail === targetEmail) ||
-              (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp + " ") !== -1 || colGrp === "kelompok " + cleanTargetGrp))) {
+          var matchUserIdentifier = (q !== "" && (colName === q || colUser === q || colMail === q)) ||
+                                    (targetName !== "" && (colName === targetName || colName.indexOf(targetName) !== -1)) ||
+                                    (targetUser !== "" && (colUser === targetUser || (!isNaN(colUser) && !isNaN(targetUser) && Number(colUser) === Number(targetUser)))) ||
+                                    (targetEmail !== "" && colMail === targetEmail) ||
+                                    (nrpSet && (nrpSet[colUser] || nrpSet[colName])) ||
+                                    (nameSet && nameSet[colName]);
+
+          var matchUserGroup = (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp + " ") !== -1 || colGrp === "kelompok " + cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp) !== -1)) ||
+                               (tGrpName !== "" && (colGrp === tGrpName || colGrp.indexOf(tGrpName) !== -1));
+
+          if (matchUserIdentifier || matchUserGroup) {
             shouldDelete = true;
           }
 
@@ -2607,6 +3034,11 @@ function doPost(e) {
 
           var targetEmpNrp = String(data.employee_nrp || "").trim().toLowerCase();
           var targetAssNrp = String(data.assessor_nrp || "").trim().toLowerCase();
+          var cleanColGrp = colAssGrp.replace(/[^0-9]/g, '');
+          var cleanTargetGrp = targetGroup.replace(/[^0-9]/g, '');
+
+          var matchAllGroupInHasil = ((data.all_group === true || data.delete_all === true) || (targetGroup !== "" && targetEmpNrp === "" && targetEmp === "" && targetJob === "")) &&
+                                     cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colAssGrp === targetGroup);
 
           var matchEmp = (targetEmpNrp !== "" && (colEmpNrp.toLowerCase() === targetEmpNrp || (!isNaN(colEmpNrp) && !isNaN(targetEmpNrp) && Number(colEmpNrp) === Number(targetEmpNrp))))
                       || (targetEmp !== "" && (colEmp === targetEmp || colEmp.indexOf(targetEmp) !== -1))
@@ -2614,32 +3046,42 @@ function doPost(e) {
           var matchJob = (targetJob !== "" && (colJob === targetJob || colJob.indexOf(targetJob) !== -1));
           var matchAss = (!data.assessor_name || colAssessor === String(data.assessor_name).trim().toLowerCase())
                       || (targetAssNrp !== "" && (colAssNrp.toLowerCase() === targetAssNrp || (!isNaN(colAssNrp) && !isNaN(targetAssNrp) && Number(colAssNrp) === Number(targetAssNrp))));
-          var matchGrp = (targetGroup === "" || colAssGrp === targetGroup);
+          var matchGrp = (targetGroup === "" || colAssGrp === targetGroup || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp));
 
-          if (matchEmp && (matchJob || targetJob === "") && matchAss && matchGrp) {
+          if (matchAllGroupInHasil || (matchEmp && (matchJob || targetJob === "") && matchAss && matchGrp)) {
             shouldDelete = true;
           }
 
         } else if (sheetName === "Kelompok") {
           // Columns: [0: Nomor_Kelompok, 1: Nama_Kelompok, 2: Plant]
-          var colNum = rowValues[0] || "";
-          var colKName = (rowValues[1] || "").toLowerCase();
-          if (colNum === targetNrp || (targetName !== "" && colKName === targetName)) {
+          var colNum = String(rowValues[0] || "").trim();
+          var colKName = String(rowValues[1] || "").trim().toLowerCase();
+          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+          var cleanTargetGrp = (targetGroup || targetNrp).replace(/[^0-9]/g, '');
+          var tGrpName = targetGroupName || targetName;
+
+          var matchNum = (cleanTargetGrp !== "" && cleanColNum === cleanTargetGrp) || (targetGroup !== "" && colNum === targetGroup) || (targetNrp !== "" && colNum === targetNrp);
+          var matchName = (tGrpName !== "" && (colKName === tGrpName || colKName.indexOf(tGrpName) !== -1 || tGrpName.indexOf(colKName) !== -1));
+
+          if (matchNum || matchName) {
             shouldDelete = true;
           }
 
         } else if (sheetName === "tim_penilai") {
           // Columns: [0: Nomor_Kelompok, 1: Nama_Kelompok, 2: NRP_Penilai, 3: Nama_Penilai, 4: Peran, 5: Departemen, 6: Plant, 7: Total_Penilaian_Dibuat]
           var colGrp = String(rowValues[0] || "").trim();
+          var colGrpName = String(rowValues[1] || "").trim().toLowerCase();
           var colNrp = String(rowValues[2] || "").trim().toLowerCase();
           var colName = String(rowValues[3] || "").trim().toLowerCase();
 
           var cleanTargetGrp = targetGroup.replace(/[^0-9]/g, '');
           var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
-          var matchGrp = (targetGroup === "" || colGrp === targetGroup || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp));
+          var tGrpName = targetGroupName || (data.group_name ? String(data.group_name).trim().toLowerCase() : "");
+
+          var matchGrp = (targetGroup === "" || colGrp === targetGroup || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp) || (tGrpName !== "" && (colGrpName === tGrpName || colGrpName.indexOf(tGrpName) !== -1)));
           var matchNrp = (targetNrp !== "" && (colNrp === targetNrp.toLowerCase() || (!isNaN(colNrp) && !isNaN(targetNrp) && Number(colNrp) === Number(targetNrp)) || (nrpSet && nrpSet[colNrp])));
-          var matchName = (targetName !== "" && (colName === targetName || colName.indexOf(targetName) !== -1 || targetName.indexOf(colName) !== -1));
-          var matchAllInGroup = (data.all_group === true && cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp);
+          var matchName = (targetName !== "" && (colName === targetName || colName.indexOf(targetName) !== -1 || targetName.indexOf(colName) !== -1)) || (nameSet && nameSet[colName]);
+          var matchAllInGroup = ((data.all_group === true || data.delete_all === true) && ((cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp) || colGrp === targetGroup || (tGrpName !== "" && colGrpName === tGrpName)));
 
           if ((matchGrp && (matchNrp || matchName)) || matchAllInGroup) {
             shouldDelete = true;
