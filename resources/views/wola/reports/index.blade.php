@@ -161,7 +161,7 @@
                                 <span class="text-xs text-slate-400 block">Mode Matriks:</span>
                                 <strong class="text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 justify-end">
                                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                    Seluruh 12 Kelompok Kerja
+                                    Seluruh {{ count($allGroups ?? []) }} Kelompok Kerja
                                 </strong>
                             </div>
                         @endif
@@ -264,7 +264,7 @@
                                     </svg>
                                     Lompat Cepat ke Kelompok:
                                 </span>
-                                <span class="text-[11px] text-slate-400 font-semibold">12 Kelompok Tersedia</span>
+                                <span class="text-[11px] text-slate-400 font-semibold">{{ count($allGroupsMatrixData ?? $allGroups ?? []) }} Kelompok Tersedia</span>
                             </div>
                             <div class="flex flex-wrap gap-2">
                                 @foreach($allGroupsMatrixData as $gData)
@@ -1025,10 +1025,10 @@
                         <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
                             <div class="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                 <div>
-                                    <h3 class="font-extrabold text-base text-slate-900">Rekapitulasi Capaian Seluruh 12 Kelompok Kerja</h3>
+                                    <h3 class="font-extrabold text-base text-slate-900">Rekapitulasi Capaian Seluruh {{ count($allGroups ?? []) }} Kelompok Kerja</h3>
                                     <p class="text-xs text-slate-500 mt-0.5">Pemantauan progres pengisian checklist WOLA seluruh area proyek WOLA MUSASHI</p>
                                 </div>
-                                <span class="text-xs font-bold text-slate-400">Total 12 Kelompok Terdaftar</span>
+                                <span class="text-xs font-bold text-slate-400">Total {{ count($allGroups ?? []) }} Kelompok Terdaftar</span>
                             </div>
 
                             <div class="overflow-x-auto">
@@ -1502,7 +1502,7 @@
                                 Summary Kelompok & Hasil Evaluasi WOLA
                             </h3>
                             <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                Ringkasan komprehensif capaian 12 kelompok kerja, daftar karyawan yang sudah dinilai, serta posisi jabatan target
+                                Ringkasan komprehensif capaian {{ count($dashboardData['allGroups'] ?? $allGroups ?? []) }} kelompok kerja, daftar karyawan yang sudah dinilai, serta posisi jabatan target
                             </p>
                         </div>
 
@@ -1595,7 +1595,7 @@
                                     </span>
                                 </div>
                                 <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                                    Sebaran status penyelesaian 12 kelompok kerja
+                                    Sebaran status penyelesaian {{ count($dashboardData['allGroups'] ?? $allGroups ?? []) }} kelompok kerja
                                 </p>
                             </div>
 
@@ -1630,14 +1630,14 @@
                         <div class="p-6 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
                                 <h3 class="font-extrabold text-base text-slate-900 dark:text-white">
-                                    Tabel Summary Rekapitulasi 12 Kelompok Kerja
+                                    Tabel Summary Rekapitulasi {{ count($dashboardData['allGroups'] ?? $allGroups ?? []) }} Kelompok Kerja
                                 </h3>
                                 <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                     Hasil pemantauan capaian target dan realisasi checklist WOLA di seluruh area kerja PT Musashi
                                 </p>
                             </div>
                             <span class="px-3 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                                Total 12 Kelompok Terdaftar
+                                Total {{ count($dashboardData['allGroups'] ?? $allGroups ?? []) }} Kelompok Terdaftar
                             </span>
                         </div>
 

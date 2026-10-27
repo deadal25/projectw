@@ -103,17 +103,20 @@ class AdminDashboardExport implements WithMultipleSheets
                         ];
                     }
 
+                    $numGroups = count($this->d['groupsWithProgress']);
+                    $safeDivisor = max(1, $numGroups);
+
                     $totalEmpPct = $totalTargetEmp > 0 ? (float)round(($totalAssessedEmp / $totalTargetEmp) * 100, 1) : 0.0;
                     $rows[] = [
                         'TOTAL',
                         '-',
-                        'TOTAL KARYAWAN (12 KELOMPOK)',
+                        'TOTAL KARYAWAN (' . $numGroups . ' KELOMPOK)',
                         $totalTargetEmp,
                         $totalAssessedEmp,
                         $totalEmpPct,
                     ];
 
-                    // Spacer Baris 19 - 20
+                    // Spacer Baris
                     $rows[] = ['', '', '', '', '', ''];
                     $rows[] = ['', '', '', '', '', ''];
 
@@ -134,9 +137,9 @@ class AdminDashboardExport implements WithMultipleSheets
                     $totalAssessedJob = 0;
 
                     foreach ($this->d['groupsWithProgress'] as $idx => $g) {
-                        $jobTotal = (int)($this->d['chartJobTotal'][$idx] ?? 0);
+                        $jobTotal = (int)($this->d['chartJobTotal'][$idx] ?? ($g->jobs ? $g->jobs->count() : 0));
                         $jobAssessed = (int)($this->d['chartJobAssessed'][$idx] ?? 0);
-                        $jobPct = (float)($this->d['chartJobData'][$idx] ?? 0);
+                        $jobPct = (float)($this->d['chartJobData'][$idx] ?? ($jobTotal > 0 ? round(($jobAssessed / $jobTotal) * 100, 1) : 0));
 
                         $totalTargetJob += $jobTotal;
                         $totalAssessedJob += $jobAssessed;
@@ -155,18 +158,18 @@ class AdminDashboardExport implements WithMultipleSheets
                     $rows[] = [
                         'TOTAL',
                         '-',
-                        'TOTAL POSISI JOB (12 KELOMPOK)',
+                        'TOTAL POSISI JOB (' . $numGroups . ' KELOMPOK)',
                         $totalTargetJob,
                         $totalAssessedJob,
                         $totalJobPct,
                     ];
 
-                    // Spacer Baris 35 - 36
+                    // Spacer Baris
                     $rows[] = ['', '', '', '', '', ''];
                     $rows[] = ['', '', '', '', '', ''];
 
                     // =========================================================
-                    // 3. PIVOT TABEL 3: DISTRIBUSI STATUS KELOMPOK (12 KELOMPOK)
+                    // 3. PIVOT TABEL 3: DISTRIBUSI STATUS KELOMPOK
                     // =========================================================
                     $rows[] = [
                         'No',
@@ -178,10 +181,10 @@ class AdminDashboardExport implements WithMultipleSheets
                     ];
 
                     $kpiStatus = [
-                        [1, 'Selesai', (int)$this->d['completedCount'], (float)round(($this->d['completedCount'] / 12) * 100, 1), 'Progres 100% Selesai', ''],
-                        [2, 'Berjalan', (int)$this->d['inProgressCount'], (float)round(($this->d['inProgressCount'] / 12) * 100, 1), 'Aktif Pengisian Penilaian', ''],
-                        [3, 'Tertinggal', (int)$this->d['laggingCount'], (float)round(($this->d['laggingCount'] / 12) * 100, 1), 'Perlu Akselerasi & Tindak Lanjut', ''],
-                        [4, 'Belum Mulai', (int)$this->d['notStartedCount'], (float)round(($this->d['notStartedCount'] / 12) * 100, 1), 'Menunggu Pelaksanaan Pengisian', ''],
+                        [1, 'Selesai', (int)$this->d['completedCount'], (float)round(($this->d['completedCount'] / $safeDivisor) * 100, 1), 'Progres 100% Selesai', ''],
+                        [2, 'Berjalan', (int)$this->d['inProgressCount'], (float)round(($this->d['inProgressCount'] / $safeDivisor) * 100, 1), 'Aktif Pengisian Penilaian', ''],
+                        [3, 'Tertinggal', (int)$this->d['laggingCount'], (float)round(($this->d['laggingCount'] / $safeDivisor) * 100, 1), 'Perlu Akselerasi & Tindak Lanjut', ''],
+                        [4, 'Belum Mulai', (int)$this->d['notStartedCount'], (float)round(($this->d['notStartedCount'] / $safeDivisor) * 100, 1), 'Menunggu Pelaksanaan Pengisian', ''],
                     ];
 
                     foreach ($kpiStatus as $ks) {
@@ -190,8 +193,8 @@ class AdminDashboardExport implements WithMultipleSheets
 
                     $rows[] = [
                         'TOTAL',
-                        'TOTAL KESELURUHAN (12 KELOMPOK)',
-                        12,
+                        'TOTAL KESELURUHAN (' . $numGroups . ' KELOMPOK)',
+                        $numGroups,
                         100.0,
                         'Semua Kelompok Terdata',
                         '',
@@ -201,14 +204,31 @@ class AdminDashboardExport implements WithMultipleSheets
                 }
 
                 public function charts() {
+                    $numGroups = count($this->d['groupsWithProgress']);
+                    if ($numGroups === 0) return [];
+
+                    $t1Start = 6;
+                    $t1End = 5 + $numGroups;
+                    $t1Total = 6 + $numGroups;
+
+                    $t2Header = 9 + $numGroups;
+                    $t2Start = 10 + $numGroups;
+                    $t2End = 9 + (2 * $numGroups);
+                    $t2Total = 10 + (2 * $numGroups);
+
+                    $t3Header = 13 + (2 * $numGroups);
+                    $t3Start = 14 + (2 * $numGroups);
+                    $t3End = 17 + (2 * $numGroups);
+                    $t3Total = 18 + (2 * $numGroups);
+
                     // -------------------------------------------------------------
                     // 1. Chart 1: Perbandingan Capaian Karyawan Dinilai Antar Kelompok
                     // -------------------------------------------------------------
                     $cat1 = [
-                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, 'Dashboard!$B$6:$B$17', null, 12)
+                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, "Dashboard!\$B\${$t1Start}:\$B\${$t1End}", null, $numGroups)
                     ];
                     $val1 = [
-                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_NUMBER, 'Dashboard!$F$6:$F$17', null, 12)
+                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_NUMBER, "Dashboard!\$F\${$t1Start}:\$F\${$t1End}", null, $numGroups)
                     ];
                     $lab1 = [
                         new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, 'Dashboard!$F$5', null, 1)
@@ -235,19 +255,20 @@ class AdminDashboardExport implements WithMultipleSheets
                         new Title('Capaian (%)')
                     );
                     $chart1->setTopLeftPosition('H5');
-                    $chart1->setBottomRightPosition('R19');
+                    $chart1Height = max(15, $numGroups + 4);
+                    $chart1->setBottomRightPosition('R' . (5 + $chart1Height));
 
                     // -------------------------------------------------------------
                     // 2. Chart 2: Perbandingan Capaian Posisi Job Dinilai Antar Kelompok
                     // -------------------------------------------------------------
                     $cat2 = [
-                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, 'Dashboard!$B$22:$B$33', null, 12)
+                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, "Dashboard!\$B\${$t2Start}:\$B\${$t2End}", null, $numGroups)
                     ];
                     $val2 = [
-                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_NUMBER, 'Dashboard!$F$22:$F$33', null, 12)
+                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_NUMBER, "Dashboard!\$F\${$t2Start}:\$F\${$t2End}", null, $numGroups)
                     ];
                     $lab2 = [
-                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, 'Dashboard!$F$21', null, 1)
+                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, "Dashboard!\$F\${$t2Header}", null, 1)
                     ];
 
                     $series2 = new DataSeries(
@@ -270,20 +291,21 @@ class AdminDashboardExport implements WithMultipleSheets
                         new Title('Kelompok Kerja'),
                         new Title('Capaian (%)')
                     );
-                    $chart2->setTopLeftPosition('H21');
-                    $chart2->setBottomRightPosition('R35');
+                    $chart2Top = max(5 + $chart1Height + 2, $t2Header);
+                    $chart2->setTopLeftPosition('H' . $chart2Top);
+                    $chart2->setBottomRightPosition('R' . ($chart2Top + $chart1Height));
 
                     // -------------------------------------------------------------
                     // 3. Chart 3: Donut Chart Distribusi Status Kelompok
                     // -------------------------------------------------------------
                     $cat3 = [
-                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, 'Dashboard!$B$38:$B$41', null, 4)
+                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, "Dashboard!\$B\${$t3Start}:\$B\${$t3End}", null, 4)
                     ];
                     $val3 = [
-                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_NUMBER, 'Dashboard!$C$38:$C$41', null, 4)
+                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_NUMBER, "Dashboard!\$C\${$t3Start}:\$C\${$t3End}", null, 4)
                     ];
                     $lab3 = [
-                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, 'Dashboard!$C$37', null, 1)
+                        new DataSeriesValues(DataSeriesValues::DATASERIES_TYPE_STRING, "Dashboard!\$C\${$t3Header}", null, 1)
                     ];
 
                     $series3 = new DataSeries(
@@ -297,19 +319,37 @@ class AdminDashboardExport implements WithMultipleSheets
 
                     $chart3 = new Chart(
                         'chart_status_donut',
-                        new Title('Distribusi Status Kelompok (12 Kelompok)'),
+                        new Title('Distribusi Status Kelompok (' . $numGroups . ' Kelompok)'),
                         new Legend(Legend::POSITION_BOTTOM, null, false),
                         new PlotArea(null, [$series3]),
                         true,
                         DataSeries::EMPTY_AS_GAP
                     );
-                    $chart3->setTopLeftPosition('H37');
-                    $chart3->setBottomRightPosition('R49');
+                    $chart3Top = max($chart2Top + $chart1Height + 2, $t3Header);
+                    $chart3->setTopLeftPosition('H' . $chart3Top);
+                    $chart3->setBottomRightPosition('R' . ($chart3Top + 14));
 
                     return [$chart1, $chart2, $chart3];
                 }
 
                 public function styles(Worksheet $sheet) {
+                    $numGroups = count($this->d['groupsWithProgress']);
+                    if ($numGroups === 0) return [];
+
+                    $t1Start = 6;
+                    $t1End = 5 + $numGroups;
+                    $t1Total = 6 + $numGroups;
+
+                    $t2Header = 9 + $numGroups;
+                    $t2Start = 10 + $numGroups;
+                    $t2End = 9 + (2 * $numGroups);
+                    $t2Total = 10 + (2 * $numGroups);
+
+                    $t3Header = 13 + (2 * $numGroups);
+                    $t3Start = 14 + (2 * $numGroups);
+                    $t3End = 17 + (2 * $numGroups);
+                    $t3Total = 18 + (2 * $numGroups);
+
                     // Header title styles
                     $sheet->mergeCells('A1:F1');
                     $sheet->mergeCells('A2:F2');
@@ -335,24 +375,24 @@ class AdminDashboardExport implements WithMultipleSheets
                     $sheet->getRowDimension(5)->setRowHeight(26);
 
                     // Table 1 Data formatting
-                    $sheet->getStyle("A6:A18")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("B6:B18")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("D6:F18")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("A5:F18")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
+                    $sheet->getStyle("A{$t1Start}:A{$t1Total}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("B{$t1Start}:B{$t1Total}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("D{$t1Start}:F{$t1Total}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("A5:F{$t1Total}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
 
-                    // Table 1 Total Row (Row 18)
-                    $sheet->getStyle("A18:F18")->applyFromArray([
+                    // Table 1 Total Row
+                    $sheet->getStyle("A{$t1Total}:F{$t1Total}")->applyFromArray([
                         'font' => ['bold' => true, 'color' => ['argb' => 'FF1E40AF'], 'size' => 10],
                         'fill' => [
                             'fillType' => Fill::FILL_SOLID,
                             'startColor' => ['argb' => 'FFEFF6FF'],
                         ],
                     ]);
-                    $sheet->getStyle("A18:F18")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF1E40AF');
-                    $sheet->getStyle("A18:F18")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_DOUBLE)->getColor()->setARGB('FF1E40AF');
+                    $sheet->getStyle("A{$t1Total}:F{$t1Total}")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF1E40AF');
+                    $sheet->getStyle("A{$t1Total}:F{$t1Total}")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_DOUBLE)->getColor()->setARGB('FF1E40AF');
 
-                    // Table 2 Header (Row 21)
-                    $sheet->getStyle("A21:F21")->applyFromArray([
+                    // Table 2 Header
+                    $sheet->getStyle("A{$t2Header}:F{$t2Header}")->applyFromArray([
                         'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF'], 'size' => 10],
                         'fill' => [
                             'fillType' => Fill::FILL_SOLID,
@@ -364,27 +404,27 @@ class AdminDashboardExport implements WithMultipleSheets
                             'wrapText' => true,
                         ],
                     ]);
-                    $sheet->getRowDimension(21)->setRowHeight(26);
+                    $sheet->getRowDimension($t2Header)->setRowHeight(26);
 
                     // Table 2 Data formatting
-                    $sheet->getStyle("A22:A34")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("B22:B34")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("D22:F34")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("A21:F34")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
+                    $sheet->getStyle("A{$t2Start}:A{$t2Total}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("B{$t2Start}:B{$t2Total}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("D{$t2Start}:F{$t2Total}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("A{$t2Header}:F{$t2Total}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
 
-                    // Table 2 Total Row (Row 34)
-                    $sheet->getStyle("A34:F34")->applyFromArray([
+                    // Table 2 Total Row
+                    $sheet->getStyle("A{$t2Total}:F{$t2Total}")->applyFromArray([
                         'font' => ['bold' => true, 'color' => ['argb' => 'FF6B21A8'], 'size' => 10],
                         'fill' => [
                             'fillType' => Fill::FILL_SOLID,
                             'startColor' => ['argb' => 'FFF5F3FF'],
                         ],
                     ]);
-                    $sheet->getStyle("A34:F34")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF6B21A8');
-                    $sheet->getStyle("A34:F34")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_DOUBLE)->getColor()->setARGB('FF6B21A8');
+                    $sheet->getStyle("A{$t2Total}:F{$t2Total}")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF6B21A8');
+                    $sheet->getStyle("A{$t2Total}:F{$t2Total}")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_DOUBLE)->getColor()->setARGB('FF6B21A8');
 
-                    // Table 3 Header (Row 37)
-                    $sheet->getStyle("A37:E37")->applyFromArray([
+                    // Table 3 Header
+                    $sheet->getStyle("A{$t3Header}:E{$t3Header}")->applyFromArray([
                         'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF'], 'size' => 10],
                         'fill' => [
                             'fillType' => Fill::FILL_SOLID,
@@ -395,24 +435,24 @@ class AdminDashboardExport implements WithMultipleSheets
                             'vertical' => Alignment::VERTICAL_CENTER,
                         ],
                     ]);
-                    $sheet->getRowDimension(37)->setRowHeight(24);
+                    $sheet->getRowDimension($t3Header)->setRowHeight(24);
 
                     // Table 3 Data formatting
-                    $sheet->getStyle("A38:A42")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("C38:D42")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("D38:D42")->getNumberFormat()->setFormatCode('0.0"%"');
-                    $sheet->getStyle("A37:E42")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
+                    $sheet->getStyle("A{$t3Start}:A{$t3Total}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("C{$t3Start}:D{$t3Total}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("D{$t3Start}:D{$t3Total}")->getNumberFormat()->setFormatCode('0.0"%"');
+                    $sheet->getStyle("A{$t3Header}:E{$t3Total}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
 
-                    // Table 3 Total Row (Row 42)
-                    $sheet->getStyle("A42:E42")->applyFromArray([
+                    // Table 3 Total Row
+                    $sheet->getStyle("A{$t3Total}:E{$t3Total}")->applyFromArray([
                         'font' => ['bold' => true, 'color' => ['argb' => 'FF047857'], 'size' => 10],
                         'fill' => [
                             'fillType' => Fill::FILL_SOLID,
                             'startColor' => ['argb' => 'FFECFDF5'],
                         ],
                     ]);
-                    $sheet->getStyle("A42:E42")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF047857');
-                    $sheet->getStyle("A42:E42")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_DOUBLE)->getColor()->setARGB('FF047857');
+                    $sheet->getStyle("A{$t3Total}:E{$t3Total}")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setARGB('FF047857');
+                    $sheet->getStyle("A{$t3Total}:E{$t3Total}")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_DOUBLE)->getColor()->setARGB('FF047857');
 
                     return [];
                 }
@@ -429,7 +469,8 @@ class AdminDashboardExport implements WithMultipleSheets
                 }
 
                 public function title(): string {
-                    return 'Summary 12 Kelompok';
+                    $totalGroups = count($this->d['groupsWithProgress']);
+                    return "Summary {$totalGroups} Kelompok";
                 }
 
                 public function headings(): array {
@@ -494,10 +535,11 @@ class AdminDashboardExport implements WithMultipleSheets
                     $totalEmpPct = $totalTargetEmp > 0 ? round(($totalAssessedEmp / $totalTargetEmp) * 100, 1) : 0;
                     $totalChkPct = $totalTargetUnit > 0 ? round(($totalRealizedUnit / $totalTargetUnit) * 100, 1) : 0;
 
+                    $totalGroupsCount = count($this->d['groupsWithProgress']);
                     $rows[] = [
                         'TOTAL',
                         '-',
-                        'TOTAL KESELURUHAN (12 KELOMPOK)',
+                        "TOTAL KESELURUHAN ({$totalGroupsCount} KELOMPOK)",
                         '-',
                         $this->d['adminTotalAssessors'],
                         $this->d['adminTotalJobs'],
@@ -709,6 +751,9 @@ class AdminDashboardExport implements WithMultipleSheets
                 }
 
                 public function array(): array {
+                    $totalGroups = count($this->d['groupsWithProgress']);
+                    $safeDivisor = max(1, $totalGroups);
+
                     return [
                         [
                             1,
@@ -746,39 +791,39 @@ class AdminDashboardExport implements WithMultipleSheets
                             5,
                             'Kelompok Kerja Berstatus Selesai',
                             $this->d['completedCount'] . ' Kelompok',
-                            '12 Kelompok',
-                            round(($this->d['completedCount'] / 12) * 100, 1) . '%',
+                            $totalGroups . ' Kelompok',
+                            round(($this->d['completedCount'] / $safeDivisor) * 100, 1) . '%',
                             'Capaian 100%',
                         ],
                         [
                             6,
                             'Kelompok Kerja Berstatus Berjalan',
                             $this->d['inProgressCount'] . ' Kelompok',
-                            '12 Kelompok',
-                            round(($this->d['inProgressCount'] / 12) * 100, 1) . '%',
+                            $totalGroups . ' Kelompok',
+                            round(($this->d['inProgressCount'] / $safeDivisor) * 100, 1) . '%',
                             'Sedang dalam proses penilaian',
                         ],
                         [
                             7,
                             'Kelompok Kerja Berstatus Tertinggal',
                             $this->d['laggingCount'] . ' Kelompok',
-                            '12 Kelompok',
-                            round(($this->d['laggingCount'] / 12) * 100, 1) . '%',
+                            $totalGroups . ' Kelompok',
+                            round(($this->d['laggingCount'] / $safeDivisor) * 100, 1) . '%',
                             'Perlu akselerasi penilaian',
                         ],
                         [
                             8,
                             'Kelompok Kerja Belum Mulai',
                             $this->d['notStartedCount'] . ' Kelompok',
-                            '12 Kelompok',
-                            round(($this->d['notStartedCount'] / 12) * 100, 1) . '%',
+                            $totalGroups . ' Kelompok',
+                            round(($this->d['notStartedCount'] / $safeDivisor) * 100, 1) . '%',
                             'Belum ada penilaian tercatat',
                         ],
                         [
                             9,
                             'Total Tim Penilai Terdaftar',
                             $this->d['adminTotalAssessors'] . ' Penilai',
-                            '12 Kelompok',
+                            $totalGroups . ' Kelompok',
                             '100%',
                             'Tersebar di seluruh kelompok',
                         ],
