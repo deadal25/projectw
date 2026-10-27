@@ -405,18 +405,6 @@
                                                         </div>
                                                     </div>
                                                 @endif
-                                                        <div>
-                                                            Posisi: <strong class="text-slate-800 dark:text-slate-200 font-bold">{{ $j->name }}</strong>
-                                                        </div>
-                                                        <div class="flex items-center gap-3 text-[11px]">
-                                                            <span>Lengkap: <strong class="text-emerald-600 dark:text-emerald-400">{{ $jStats['full'] }} Orang ({{ $jStats['full_pct'] }}%)</strong></span>
-                                                            <span>•</span>
-                                                            <span>Sebagian: <strong class="text-amber-600 dark:text-amber-400">{{ ($jStats['one'] ?? 0) + ($jStats['two'] ?? ($jStats['partial'] ?? 0)) }} Orang</strong></span>
-                                                            <span>•</span>
-                                                            <span>Belum: <strong class="text-rose-600 dark:text-rose-400">{{ $jStats['zero'] }} Orang ({{ $jStats['zero_pct'] }}%)</strong></span>
-                                                        </div>
-                                                    </div>
-                                                @endif
 
                                                 <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-xs text-left">
                                                     <thead class="bg-slate-100/80 dark:bg-slate-900 font-bold text-slate-700 dark:text-slate-300">
