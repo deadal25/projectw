@@ -385,89 +385,7 @@ class GroupController extends Controller
             ->get();
         $affectedEmployeeNrps = $affectedEmployees->pluck('nrp')->filter()->values()->toArray();
 
-        // Baca data langsung dari spreadsheet secara live (tab 'tim_penilai' & 'Pengguna')
-        // untuk menangkap jika ada penilai/ketua/jabatan yang ada di spreadsheet tetapi belum tersinkron di DB
-        if (!empty($num)) {
-            try {
-                $sheetAssessors = $this->googleSheetService->fetchSheetRows('tim_penilai');
-                $cleanTargetGrp = preg_replace('/[^0-9]/', '', (string)$num);
-                foreach ($sheetAssessors as $sRow) {
-                    $sGrp = preg_replace('/[^0-9]/', '', (string)($sRow['nomor_kelompok'] ?? ''));
-                    if ($sGrp === $cleanTargetGrp) {
-                        $sNrp = trim((string)($sRow['nrp_penilai'] ?? ''));
-                        $sName = trim((string)($sRow['nama_penilai'] ?? ''));
-                        if (!empty($sNrp) && !in_array($sNrp, $assessorNrps)) {
-                            $assessorNrps[] = $sNrp;
-                        }
-                        if (!empty($sName) && !in_array($sName, $assessorNames)) {
-                            $assessorNames[] = $sName;
-                        }
-                    }
-                }
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning("Gagal fetch tab tim_penilai saat hapus kelompok: " . $e->getMessage());
-            }
-
-            try {
-                $sheetUsers = $this->googleSheetService->fetchSheetRows('Pengguna');
-                $cleanTargetGrp = preg_replace('/[^0-9]/', '', (string)$num);
-                foreach ($sheetUsers as $pRow) {
-                    $pGrp = (string)($pRow['kelompok'] ?? '');
-                    $cleanPGrp = preg_replace('/[^0-9]/', '', $pGrp);
-                    $matchGrp = ($cleanTargetGrp !== '' && $cleanPGrp === $cleanTargetGrp)
-                        || ($name !== '' && stripos($pGrp, $name) !== false)
-                        || ($cleanTargetGrp !== '' && stripos($pGrp, "Kelompok {$cleanTargetGrp}") !== false);
-
-                    if ($matchGrp) {
-                        $pName = trim((string)($pRow['nama'] ?? ''));
-                        $pUser = trim((string)($pRow['username'] ?? ''));
-                        $pEmail = trim((string)($pRow['email'] ?? ''));
-                        if (!empty($pName) && !in_array($pName, $leaderNames)) $leaderNames[] = $pName;
-                        if (!empty($pUser) && !in_array($pUser, $leaderUsernames)) $leaderUsernames[] = $pUser;
-                        if (!empty($pEmail) && !in_array($pEmail, $leaderEmails)) $leaderEmails[] = $pEmail;
-                    }
-                }
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning("Gagal fetch tab Pengguna saat hapus kelompok: " . $e->getMessage());
-            }
-
-            try {
-                $sheetJobs = $this->googleSheetService->fetchSheetRows('Posisi_Job');
-                $cleanTargetGrp = preg_replace('/[^0-9]/', '', (string)$num);
-                foreach ($sheetJobs as $jRow) {
-                    $jGrp = preg_replace('/[^0-9]/', '', (string)($jRow['nomor_kelompok'] ?? ''));
-                    if ($jGrp === $cleanTargetGrp) {
-                        $jName = trim((string)($jRow['nama_job'] ?? ''));
-                        if (!empty($jName) && !in_array($jName, $jobNames)) {
-                            $jobNames[] = $jName;
-                        }
-                    }
-                }
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning("Gagal fetch tab Posisi_Job saat hapus kelompok: " . $e->getMessage());
-            }
-        }
-
-        // 2. Lakukan sinkronisasi HAPUS ke Google Spreadsheet secara menyeluruh (Kelompok, tim_penilai, Pengguna, Posisi_Job, Hasil_Penilaian, reset Area_WLA Karyawan)
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->cascadeDeleteGroup($num, $name, [
-            'leader_names' => $leaderNames,
-            'leader_emails' => $leaderEmails,
-            'leader_usernames' => $leaderUsernames,
-            'assessor_nrps' => $assessorNrps,
-            'assessor_names' => $assessorNames,
-            'job_names' => $jobNames,
-            'assessment_pairs' => $assessmentPairs,
-            'employee_nrps' => $affectedEmployeeNrps,
-        ]);
-
-        if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis dihapus juga dari database Google Spreadsheet (tab Kelompok, tim_penilai, Pengguna, Posisi_Job, Hasil_Penilaian, dan reset Area WLA Karyawan)!";
-        } elseif (!$sheetRes['configured']) {
-            $sheetSyncNote = " (Catatan: Hubungkan Webhook Google Sheets agar otomatis terhapus dari Google Spreadsheet)";
-        }
-
-        // 3. Hapus data di database lokal
+        // 2. Hapus data di database lokal terlebih dahulu secara konsisten (sangat cepat, < 0.05 detik)
         DB::transaction(function () use ($group, $num, $name, $leaderUsers) {
             foreach ($leaderUsers as $leaderUser) {
                 ActivityLog::log(
@@ -505,6 +423,25 @@ class GroupController extends Controller
             "Menghapus Kelompok {$num} - {$name} beserta seluruh jabatan, penilaian, akun Ketua dan tim penilai terkait",
             ['number' => $num]
         );
+
+        // 3. Lakukan sinkronisasi HAPUS ke Google Spreadsheet secara menyeluruh via Webhook tunggal (Kelompok, tim_penilai, Pengguna, Posisi_Job, Hasil_Penilaian, reset Area_WLA Karyawan)
+        $sheetSyncNote = '';
+        $sheetRes = $this->googleSheetService->cascadeDeleteGroup($num, $name, [
+            'leader_names' => $leaderNames,
+            'leader_emails' => $leaderEmails,
+            'leader_usernames' => $leaderUsernames,
+            'assessor_nrps' => $assessorNrps,
+            'assessor_names' => $assessorNames,
+            'job_names' => $jobNames,
+            'assessment_pairs' => $assessmentPairs,
+            'employee_nrps' => $affectedEmployeeNrps,
+        ]);
+
+        if ($sheetRes['success']) {
+            $sheetSyncNote = " 🟢 Otomatis dihapus juga dari database Google Spreadsheet (tab Kelompok, tim_penilai, Pengguna, Posisi_Job, Hasil_Penilaian, dan reset Area WLA Karyawan)!";
+        } elseif (!$sheetRes['configured']) {
+            $sheetSyncNote = " (Catatan: Hubungkan Webhook Google Sheets agar otomatis terhapus dari Google Spreadsheet)";
+        }
 
         return redirect()->route('wola.groups.index')->with('success', "Kelompok {$num} ({$name}) beserta nama Ketua, seluruh tim penilai, jabatan, dan hasil penilaian berhasil dihapus dari sistem.{$sheetSyncNote}");
     }

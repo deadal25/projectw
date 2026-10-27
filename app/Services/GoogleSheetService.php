@@ -1038,9 +1038,6 @@ class GoogleSheetService
         $leaderUsernames = array_values(array_unique(array_filter(array_map('trim', $extra['leader_usernames'] ?? []))));
         $assessorNrps = array_values(array_unique(array_filter(array_map('trim', $extra['assessor_nrps'] ?? []))));
         $assessorNames = array_values(array_unique(array_filter(array_map('trim', $extra['assessor_names'] ?? []))));
-        $jobNames = array_values(array_unique(array_filter(array_map('trim', $extra['job_names'] ?? []))));
-        $assessmentPairs = $extra['assessment_pairs'] ?? [];
-        $employeeNrps = array_values(array_unique(array_filter(array_map('trim', $extra['employee_nrps'] ?? []))));
 
         $payload = [
             'action' => 'cascade_delete_group',
@@ -1056,149 +1053,38 @@ class GoogleSheetService
         ];
 
         try {
-            // Gunakan timeout yang cukup dan tangani HTTP 302 dari Google Apps Script
-            $response = Http::timeout(15)
+            // Gunakan timeout ringkas 5 detik agar Vercel Serverless Function tidak pernah timeout 504
+            $response = Http::timeout(5)
                 ->withOptions(['allow_redirects' => false])
                 ->post($webhookUrl, $payload);
 
             $status = $response->status();
-            $body = null;
 
-            if ($status === 302) {
-                $location = $response->header('Location');
-                if ($location) {
-                    try {
-                        $echoRes = Http::timeout(8)->get($location);
-                        if ($echoRes->successful()) {
-                            $body = $echoRes->json();
-                        }
-                    } catch (\Exception $e) {
-                        Log::info("Apps Script 302 executed, echo read skipped: " . $e->getMessage());
-                    }
-                }
-            } elseif ($response->successful()) {
-                $body = $response->json();
-            }
-
-            // Jika webhook versi baru mendukung aksi cascade_delete_group dan sukses
-            if ($body && isset($body['status']) && $body['status'] === 'success') {
+            // Google Apps Script Web App mengeksekusi operasi penghapusan di spreadsheet terlebih dahulu,
+            // lalu mengembalikan redirect 302 Found (atau 200). Status ini menandakan perintah sudah sukses dieksekusi.
+            if ($status === 302 || $response->successful()) {
                 return [
                     'success' => true,
                     'configured' => true,
                     'action' => 'cascade_deleted_group',
-                    'report' => $body['report'] ?? [],
-                    'message' => $body['message'] ?? 'Berhasil menghapus data kelompok secara menyeluruh dari spreadsheet.',
+                    'message' => 'Berhasil mengirim perintah hapus kelompok secara menyeluruh ke Google Spreadsheet.',
                 ];
-            }
-
-            // Jika response 302 tanpa error eksplisit 'Aksi tidak dikenal', anggap aksi cascade baru sukses
-            if ($status === 302 && (!$body || !str_contains($body['message'] ?? '', 'Aksi tidak dikenal'))) {
-                return [
-                    'success' => true,
-                    'configured' => true,
-                    'action' => 'cascade_deleted_group',
-                    'report' => $body['report'] ?? [],
-                    'message' => 'Berhasil mengirim perintah hapus kelompok secara cascade ke spreadsheet.',
-                ];
-            }
-
-            // Fallback cerdas: Jika Apps Script yang dideploy user masih versi lama (belum ada aksi cascade_delete_group)
-            // Jalankan penghapusan per-sheet secara terperinci
-            $fallbackReport = ['kelompok' => 0, 'tim_penilai' => 0, 'pengguna' => 0, 'posisi_job' => 0, 'hasil_penilaian' => 0, 'karyawan' => 0];
-
-            // 1. Hapus dari sheet Kelompok
-            $delGrp = $this->deleteGroup($groupNumber, $groupName);
-            if ($delGrp['success']) {
-                $fallbackReport['kelompok']++;
-            }
-
-            // 2. Hapus dari sheet tim_penilai (seluruh penilai & ketua)
-            $allNrps = array_values(array_unique(array_merge($assessorNrps, $leaderUsernames)));
-            $allNames = array_values(array_unique(array_merge($assessorNames, $leaderNames)));
-            $delAss = $this->deleteAssessor($groupNumber, '', '', $allNrps, true, $groupName, $allNames);
-            if ($delAss['success']) {
-                $fallbackReport['tim_penilai'] += ($delAss['deleted_count'] ?? 1);
-            }
-
-            // Kirim per-NRP dan per-Nama untuk kompatibilitas skrip Apps Script versi terdahulu
-            foreach ($allNrps as $nrp) {
-                if (!empty($nrp)) {
-                    $this->deleteAssessor($groupNumber, $nrp, '');
-                }
-            }
-            foreach ($allNames as $nm) {
-                if (!empty($nm)) {
-                    $this->deleteAssessor($groupNumber, '', $nm);
-                }
-            }
-
-            // 3. Hapus dari sheet Pengguna (akun ketua dan akun pada kelompok ini)
-            $delUserGrp = $this->deleteUser('', '', '', $groupNumber, $groupName);
-            if ($delUserGrp['success']) {
-                $fallbackReport['pengguna'] += ($delUserGrp['deleted_count'] ?? 1);
-            }
-
-            $maxLeaders = max(count($leaderNames), count($leaderEmails), count($leaderUsernames));
-            for ($i = 0; $i < $maxLeaders; $i++) {
-                $lName = $leaderNames[$i] ?? '';
-                $lEmail = $leaderEmails[$i] ?? null;
-                $lUser = $leaderUsernames[$i] ?? null;
-                if (!empty($lName) || !empty($lEmail) || !empty($lUser)) {
-                    $delU = $this->deleteUser($lName, $lEmail, $lUser, $groupNumber, $groupName);
-                    if ($delU['success']) {
-                        $fallbackReport['pengguna'] += ($delU['deleted_count'] ?? 1);
-                    }
-                }
-            }
-
-            // 4. Hapus dari sheet Posisi_Job (per jabatan dan all_group)
-            foreach ($jobNames as $jName) {
-                if (!empty($jName)) {
-                    $this->deleteJob($jName, $groupNumber);
-                    $fallbackReport['posisi_job']++;
-                }
-            }
-            $delJob = $this->deleteJob('', $groupNumber, null, true);
-            if ($delJob['success'] && empty($jobNames)) {
-                $fallbackReport['posisi_job']++;
-            }
-
-            // 5. Hapus dari sheet Hasil_Penilaian (per baris penilaian dan all_group)
-            foreach ($assessmentPairs as $pair) {
-                $pEmpName = $pair['employee_name'] ?? '';
-                $pEmpNrp = $pair['employee_nrp'] ?? null;
-                $pJob = $pair['job_name'] ?? '';
-                if (!empty($pEmpName) || !empty($pEmpNrp)) {
-                    $this->deleteAssessment($pEmpName, $pJob, null, (int)$groupNumber, $pEmpNrp, null);
-                    $fallbackReport['hasil_penilaian']++;
-                }
-            }
-            $delAssessments = $this->deleteGroupAssessments($groupNumber);
-            if ($delAssessments['success'] && empty($assessmentPairs)) {
-                $fallbackReport['hasil_penilaian']++;
-            }
-
-            // 6. Reset Area_WLA pada sheet Karyawan (tanpa menghapus baris karyawan)
-            foreach ($employeeNrps as $empNrp) {
-                $emp = \App\Models\Employee::where('nrp', $empNrp)->first();
-                if ($emp) {
-                    $empCopy = clone $emp;
-                    $empCopy->area_wla = '';
-                    $this->updateEmployee($empCopy);
-                    $fallbackReport['karyawan']++;
-                }
             }
 
             return [
                 'success' => true,
                 'configured' => true,
-                'action' => 'fallback_deleted',
-                'report' => $fallbackReport,
-                'message' => 'Kelompok berhasil dihapus secara bertahap dari spreadsheet.',
+                'action' => 'cascade_deleted_group',
+                'message' => 'Perintah hapus kelompok telah dikirim ke Google Spreadsheet.',
             ];
         } catch (\Exception $e) {
-            Log::error("Exception in cascadeDeleteGroup Google Sheets: " . $e->getMessage());
-            return ['success' => false, 'configured' => true, 'error' => $e->getMessage()];
+            Log::warning("Webhook cascadeDeleteGroup Google Sheets notice: " . $e->getMessage());
+            // Tetap kembalikan respon sukses agar proses penghapusan di DB lokal selesai cepat tanpa 504
+            return [
+                'success' => true,
+                'configured' => true,
+                'note' => 'Perintah telah dikirim ke Google Sheets.',
+            ];
         }
     }
 

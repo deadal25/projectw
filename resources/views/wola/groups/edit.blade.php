@@ -88,9 +88,10 @@
                             <p class="text-[11px] text-slate-400 mt-0.5">Hapus permanen area kelompok ini beserta seluruh data jabatan, penilai, dan checklistnya.</p>
                         </div>
                         <form method="POST" action="{{ route('wola.groups.destroy', $group) }}"
-                              onsubmit="return confirm('Apakah Anda yakin ingin menghapus Kelompok {{ $group->number }} ({{ addslashes($group->name) }})?\n\nPerhatian: Akun Ketua di Manajemen Akun, seluruh data jabatan, tim penilai, dan rekaman penilaian akan ikut dihapus permanen.');">
+                              onsubmit="let confirmWord = prompt('Apakah Anda yakin ingin menghapus Kelompok {{ $group->number }} ({{ addslashes($group->name) }})?\n\nKetik kata HAPUS untuk mengonfirmasi:'); if (!confirmWord || confirmWord.trim().toUpperCase() !== 'HAPUS') { alert('Penghapusan dibatalkan. Anda wajib mengetik kata HAPUS.'); return false; } document.getElementById('edit-delete-confirm-input').value = confirmWord.trim().toUpperCase();">
                             @csrf
                             @method('DELETE')
+                            <input type="hidden" name="confirmation_text" id="edit-delete-confirm-input" value="">
                             <button type="submit"
                                     class="px-4 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 font-bold text-xs rounded-xl border border-rose-200 dark:border-rose-800 transition flex items-center space-x-1.5 shrink-0">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
