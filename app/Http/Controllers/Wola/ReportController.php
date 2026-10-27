@@ -78,6 +78,8 @@ class ReportController extends Controller
         $matrixEmployees = collect();
         $jobs = collect();
         $allGroupsMatrixData = [];
+        $isAllJobs = ($request->input('job_id') === 'all' && Auth::user()->hasRole(['superadmin', 'admin']));
+        $singleGroupAllJobsData = [];
         $globalMatrixStats = [
             'total_groups' => $allGroups->count(),
             'total_employees' => 0,
