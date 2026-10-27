@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
             <div>
                 <h2 class="font-bold text-2xl text-slate-900 dark:text-white leading-tight">
                     {{ __('Pusat Laporan & Rekapitulasi WOLA') }}
@@ -44,7 +44,7 @@
     </x-slot>
 
     <div class="py-8">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+        <div class="max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] w-full mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 space-y-6">
 
             <!-- Flash Alert Messages -->
             @if(session('success'))
@@ -66,8 +66,8 @@
             @endif
 
             <!-- Navigasi Tab Laporan -->
-            <div class="flex border-b border-slate-200 bg-white px-6 pt-3 rounded-2xl shadow-xs">
-                <nav class="flex space-x-6">
+            <div class="border-b border-slate-200 bg-white px-3 sm:px-6 pt-3 rounded-2xl shadow-xs overflow-x-auto scrollbar-none">
+                <nav class="flex space-x-4 sm:space-x-6 shrink-0 min-w-max">
                     <a href="{{ route('wola.reports.index', ['tab' => 'matrix', 'group_id' => request('group_id', ($selectedGroup ? $selectedGroup->id : 'all')), 'job_id' => request('job_id')]) }}"
                        class="py-3 px-1 border-b-2 font-bold text-xs transition flex items-center space-x-2
                        {{ $tab === 'matrix' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700' }}">
@@ -187,7 +187,7 @@
                                     {{ $globalMatrixStats['total_groups'] }} <span class="text-xs text-slate-400 font-semibold">Kelompok Kerja</span>
                                 </h4>
                                 <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-                                    Kelompok 1 s.d. 12 WOLA MUSASHI
+                                    Seluruh kelompok kerja WOLA MUSASHI
                                 </p>
                             </div>
 

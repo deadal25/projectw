@@ -19,10 +19,10 @@
     </x-slot>
 
     <div class="py-8">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+        <div class="max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] w-full mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 space-y-6">
 
             <!-- Ringkasan Hasil Validasi File -->
-            <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Total Baris</p>
                     <p class="text-3xl font-extrabold text-slate-900 dark:text-white mt-1">{{ count($previewData) }}</p>

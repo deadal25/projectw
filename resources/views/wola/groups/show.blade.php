@@ -68,7 +68,7 @@
             this.showEditAssessorModal = true;
         }
     }">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+        <div class="max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] w-full mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 space-y-6">
 
             <!-- Flash Alert Messages -->
             @if(session('success'))
@@ -90,7 +90,7 @@
             @endif
 
             <!-- Dashboard Pemantauan Progres Area -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <!-- Target Checklist -->
                 <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
                     <div class="flex items-center justify-between text-slate-400">
@@ -202,8 +202,8 @@
             </div>
 
             <!-- Tab Navigation -->
-            <div class="border-b border-slate-200 dark:border-slate-700">
-                <nav class="flex space-x-6 text-sm font-bold">
+            <div class="border-b border-slate-200 dark:border-slate-700 overflow-x-auto scrollbar-none">
+                <nav class="flex space-x-4 sm:space-x-6 text-sm font-bold shrink-0 min-w-max">
                     <button type="button" @click="tab = 'jobs'"
                             :class="tab === 'jobs' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'"
                             class="py-3 px-1 border-b-2 transition flex items-center space-x-2">
@@ -285,7 +285,8 @@
                 <!-- Tabel Jabatan -->
                 <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden"
                      x-data="{ activeEditJobId: null }">
-                    <table class="w-full text-left border-collapse text-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-sm">
                         <thead>
                             <tr class="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                 <th class="py-3 px-4 w-16 text-center">Urutan</th>
@@ -444,6 +445,7 @@
                             @endforelse
                         </tbody>
                     </table>
+                    </div>
                 </div>
             </div>
 
@@ -507,7 +509,8 @@
 
                 <!-- Tabel Penilai -->
                 <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                    <table class="w-full text-left border-collapse text-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-sm">
                         <thead>
                             <tr class="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                 <th class="py-3 px-4">Status & NRP</th>
@@ -597,6 +600,7 @@
                             @endforelse
                         </tbody>
                     </table>
+                    </div>
                 </div>
 
                 <!-- ========================================================= -->
@@ -825,7 +829,8 @@
 
                 <!-- Tabel Karyawan Sasaran yang Terdaftar di Kelompok Ini -->
                 <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                    <table class="w-full text-left border-collapse text-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-sm">
                         <thead>
                             <tr class="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
                                 <th class="py-3 px-4 w-12 text-center">No</th>
@@ -876,6 +881,7 @@
                             @endforelse
                         </tbody>
                     </table>
+                    </div>
                 </div>
 
                 @if(auth()->user()->hasRole(['superadmin', 'admin']))

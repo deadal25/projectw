@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
             <div>
                 <div class="flex items-center space-x-3">
                     <h2 class="font-bold text-2xl text-slate-900 dark:text-white leading-tight">
@@ -66,7 +66,7 @@
                  $dispatch('open-modal', 'delete-single-log-modal');
              }
          }">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+        <div class="max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] w-full mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 space-y-6">
 
             <!-- Flash Alert Messages -->
             @if(session('success'))

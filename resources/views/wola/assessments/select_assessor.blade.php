@@ -33,7 +33,7 @@
     </x-slot>
 
     <div class="py-8">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+        <div class="max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] w-full mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 space-y-6">
 
             @if(!$isKetuaOnly && $allGroups->count() > 1)
                 <!-- Selektor 12 Kelompok Khusus Administrator -->

@@ -1,11 +1,11 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
             <div>
-                <h2 class="font-bold text-2xl text-slate-900 dark:text-white leading-tight">
+                <h2 class="font-bold text-xl sm:text-2xl text-slate-900 dark:text-white leading-tight">
                     {{ __('Master Karyawan') }}
                 </h2>
-                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1">
                     Kelola data seluruh karyawan MUSASHi
                 </p>
             </div>
@@ -113,7 +113,7 @@
                  return 0;
              }
          }">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+        <div class="max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] w-full mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 space-y-6">
 
             <!-- Flash Alert Messages -->
             @if(session('success'))
@@ -138,16 +138,8 @@
                 </div>
             @endif
 
-            <!-- 4 Kartu Ringkasan Statistik Master Karyawan (Sejajar 4 Kolom) -->
-            <style>
-                @media (min-width: 640px) {
-                    .stat-cards-grid {
-                        display: grid !important;
-                        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-                    }
-                }
-            </style>
-            <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 gap-4 stat-cards-grid">
+            <!-- 4 Kartu Ringkasan Statistik Master Karyawan -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <!-- 1. Total Karyawan -->
                 <div class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center space-x-3.5 sm:space-x-4">
                     <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
@@ -203,7 +195,7 @@
 
             <!-- Panel Filter & Pencarian Cepat -->
             <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                <form method="GET" action="{{ route('wola.employees.index') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <form method="GET" action="{{ route('wola.employees.index') }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
                     
                     <!-- Input Cari EMPLOYEENO / FULLNAME -->
                     <div>

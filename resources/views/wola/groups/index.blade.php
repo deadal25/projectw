@@ -54,7 +54,7 @@
     }"
     @open-create-group-modal.window="createModalOpen = true">
 
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+        <div class="max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] w-full mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 space-y-6">
 
             <!-- Flash Alert Success -->
             @if(session('success'))
@@ -99,7 +99,7 @@
             @endif
 
             <!-- Grid Seluruh Kelompok -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 gap-4 sm:gap-6">
                 @forelse($groups as $group)
                     @php
                         $progress = $group->getProgressData();

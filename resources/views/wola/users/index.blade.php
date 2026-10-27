@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
             <div>
                 <h2 class="font-bold text-2xl text-slate-900 dark:text-white leading-tight">
                     {{ __('Manajemen Pengguna & Tim Penilai') }}
@@ -97,7 +97,7 @@
                  this.editAssessorModal = true;
              }
          }">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+        <div class="max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] w-full mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 space-y-6">
 
             <!-- Flash Alert Messages -->
             @if(session('success'))
@@ -118,16 +118,8 @@
                 </div>
             @endif
 
-            <!-- 4 Kartu Ringkasan KPI Statistik (Sejajar 4 Kolom) -->
-            <style>
-                @media (min-width: 640px) {
-                    .stat-cards-grid {
-                        display: grid !important;
-                        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-                    }
-                }
-            </style>
-            <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 gap-4 stat-cards-grid">
+            <!-- 4 Kartu Ringkasan KPI Statistik -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 @if(auth()->user()->hasRole('superadmin'))
                     <!-- Superadmin -->
                     <div class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center space-x-3.5 sm:space-x-4">
