@@ -43,12 +43,19 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
-        Auth::guard('web')->logout();
+        try {
+            if (Auth::guard('web')->check() || Auth::check()) {
+                Auth::guard('web')->logout();
+            }
 
-        $request->session()->invalidate();
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Logout cleanup notice: ' . $e->getMessage());
+        }
 
-        $request->session()->regenerateToken();
-
-        return redirect('/');
+        return redirect()->route('login');
     }
 }

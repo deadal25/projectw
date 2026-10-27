@@ -53,7 +53,8 @@ Route::middleware('auth')->group(function () {
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
 
     Route::put('password', [PasswordController::class, 'update'])->name('password.update');
-
-    Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
-        ->name('logout');
 });
+
+// Route logout mendukung POST dan GET serta dapat diakses kapan pun untuk mencegah server error saat sesi kedaluwarsa
+Route::match(['get', 'post'], 'logout', [AuthenticatedSessionController::class, 'destroy'])
+    ->name('logout');

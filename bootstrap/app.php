@@ -12,6 +12,10 @@ $app = Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->trustProxies(at: '*');
+        $middleware->validateCsrfTokens(except: [
+            'logout',
+            'logout/*',
+        ]);
         $middleware->alias([
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
@@ -19,7 +23,12 @@ $app = Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        $exceptions->render(function (\Illuminate\Session\TokenMismatchException $e, $request) {
+            if ($request->is('logout') || $request->is('logout/*')) {
+                return redirect()->route('login');
+            }
+            return redirect()->route('login')->with('status', 'Sesi Anda telah kedaluwarsa. Silakan masuk kembali.');
+        });
     })->create();
 
 if (isset($_ENV['VERCEL']) || isset($_SERVER['VERCEL'])) {
