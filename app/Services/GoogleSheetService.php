@@ -223,6 +223,15 @@ class GoogleSheetService
             $line = $this->findValue($row, ['line', 'posisi_line']);
             $plant = $this->findValue($row, ['plant', 'lokasi', 'factory']) ?: 'CIKARANG';
             $areaWla = $this->findValue($row, ['area_wla', 'area', 'wla', 'area_kerja']);
+            $idKelompok = $this->findValue($row, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok']);
+            if ($idKelompok && empty($areaWla)) {
+                $grp = Group::where('number', (int)$idKelompok)->first();
+                if ($grp) {
+                    $areaWla = $grp->name;
+                } else {
+                    $areaWla = "Kelompok " . (int)$idKelompok;
+                }
+            }
 
             $existing = Employee::where('nrp', $nrp)->first();
 
@@ -286,8 +295,8 @@ class GoogleSheetService
         $updated = 0;
 
         foreach ($rows as $row) {
-            $number = (int) $this->findValue($row, ['nomor_kelompok', 'nomor', 'number', 'no', 'kelompok']);
-            $name = $this->findValue($row, ['nama_kelompok', 'nama', 'name', 'area_kelompok']);
+            $number = (int) $this->findValue($row, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'nomor', 'number', 'no', 'kelompok', 'id']);
+            $name = $this->findValue($row, ['nama_kelompok', 'namakelompok', 'nama', 'name', 'area_kelompok', 'area_wla']);
             $plant = $this->findValue($row, ['plant', 'lokasi']) ?: 'CIKARANG';
 
             if ($number <= 0 || !$name) {
@@ -356,7 +365,7 @@ class GoogleSheetService
         $updated = 0;
 
         foreach ($rows as $row) {
-            $groupNum = (int) $this->findValue($row, ['nomor_kelompok', 'kelompok', 'group_number', 'no_kelompok', 'no']);
+            $groupNum = (int) $this->findValue($row, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'kelompok', 'group_number', 'no_kelompok', 'no', 'id']);
             $code = $this->findValue($row, ['kode_job', 'kode', 'code', 'job_code']);
             $name = $this->findValue($row, ['nama_job', 'nama', 'name', 'job_name']);
             $targetQuota = $this->findValue($row, ['target_kuota', 'target_employees', 'target', 'kuota']);
@@ -434,7 +443,7 @@ class GoogleSheetService
         $updated = 0;
 
         foreach ($rows as $row) {
-            $groupNumber = (int) $this->findValue($row, ['nomor_kelompok', 'kelompok', 'group_number', 'no', 'nomor']);
+            $groupNumber = (int) $this->findValue($row, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'kelompok', 'group_number', 'no', 'nomor', 'id']);
             $nrp = $this->findValue($row, ['nrp_penilai', 'nrp', 'nik', 'id_penilai', 'no_karyawan']);
             $name = $this->findValue($row, ['nama_penilai', 'nama', 'fullname', 'penilai', 'nama_lengkap']);
             $roleStr = strtolower($this->findValue($row, ['peran', 'role', 'jabatan_tim']) ?: '');
@@ -540,11 +549,13 @@ class GoogleSheetService
             $email = null;
             $roleStr = 'ketua';
             $kelompokStr = null;
+            $idKelompokStr = null;
             $password = '123456';
 
             foreach ($row as $k => $v) {
                 $v = trim((string)$v);
                 if (empty($v)) continue;
+                if (str_contains($k, 'id_kelompok') || str_contains($k, 'idkelompok')) $idKelompokStr = $v;
                 if (str_contains($k, 'nama')) $name = $v;
                 if (str_contains($k, 'username')) $username = $v;
                 if (str_contains($k, 'email')) $email = $v;
@@ -563,6 +574,10 @@ class GoogleSheetService
             }
 
             $cleanGrpNum = $kelompokStr ? preg_replace('/[^0-9]/', '', $kelompokStr) : null;
+            if ($idKelompokStr) {
+                $cleanId = preg_replace('/[^0-9]/', '', (string)$idKelompokStr);
+                if (!empty($cleanId)) $cleanGrpNum = $cleanId;
+            }
             $group = $cleanGrpNum ? \App\Models\Group::where('number', (int)$cleanGrpNum)->first() : null;
 
             $validRole = in_array($roleStr, ['superadmin', 'admin', 'ketua']) ? $roleStr : 'ketua';
@@ -677,9 +692,11 @@ class GoogleSheetService
         $output = fopen('php://temp', 'r+');
 
         if ($type === 'karyawan') {
-            fputcsv($output, ['NRP', 'Nama_Lengkap', 'Departemen', 'Divisi', 'Plant', 'Area_WLA']);
+            fputcsv($output, ['NRP', 'Nama_Lengkap', 'Departemen', 'Divisi', 'Plant', 'Area_WLA', 'ID_Kelompok']);
             $employees = Employee::orderBy('nrp')->limit(50)->get();
+            $groups = Group::all()->keyBy('name');
             foreach ($employees as $emp) {
+                $grpId = (!empty($emp->area_wla) && isset($groups[$emp->area_wla])) ? $groups[$emp->area_wla]->number : '';
                 fputcsv($output, [
                     $emp->nrp,
                     $emp->fullname,
@@ -687,16 +704,17 @@ class GoogleSheetService
                     $emp->division,
                     $emp->plant,
                     $emp->area_wla,
+                    $grpId,
                 ]);
             }
         } elseif ($type === 'kelompok') {
-            fputcsv($output, ['Nomor_Kelompok', 'Nama_Kelompok', 'Plant']);
+            fputcsv($output, ['ID_Kelompok', 'Nama_Kelompok', 'Plant']);
             $groups = Group::orderBy('number')->get();
             foreach ($groups as $g) {
                 fputcsv($output, [$g->number, $g->name, $g->plant]);
             }
         } elseif ($type === 'posisi_job') {
-            fputcsv($output, ['Nomor_Kelompok', 'Kode_Job', 'Nama_Job', 'Target_Kuota']);
+            fputcsv($output, ['ID_Kelompok', 'Kode_Job', 'Nama_Job', 'Target_Kuota']);
             $jobs = Job::with('group')->orderBy('group_id')->orderBy('code')->get();
             foreach ($jobs as $j) {
                 fputcsv($output, [
@@ -707,7 +725,7 @@ class GoogleSheetService
                 ]);
             }
         } elseif ($type === 'hasil_penilaian') {
-            fputcsv($output, ['Tanggal_Waktu', 'Nomor_Kelompok', 'NRP_Penilai', 'Penilai', 'NRP_Dinilai', 'Karyawan_Dinilai', 'Posisi_Job', 'Status', 'Catatan']);
+            fputcsv($output, ['Tanggal_Waktu', 'ID_Kelompok', 'NRP_Penilai', 'Penilai', 'NRP_Dinilai', 'Karyawan_Dinilai', 'Posisi_Job', 'Status', 'Catatan']);
             $assessments = Assessment::with(['group', 'assessor.employee', 'employee', 'job'])->orderBy('assessed_at', 'desc')->get();
             foreach ($assessments as $a) {
                 fputcsv($output, [
@@ -723,7 +741,7 @@ class GoogleSheetService
                 ]);
             }
         } elseif ($type === 'tim_penilai') {
-            fputcsv($output, ['Nomor_Kelompok', 'Nama_Kelompok', 'NRP_Penilai', 'Nama_Penilai', 'Peran', 'Departemen', 'Plant', 'Total_Penilaian_Dibuat']);
+            fputcsv($output, ['ID_Kelompok', 'Nama_Kelompok', 'NRP_Penilai', 'Nama_Penilai', 'Peran', 'Departemen', 'Plant', 'Total_Penilaian_Dibuat']);
             $assessors = \App\Models\GroupAssessor::with(['group', 'employee', 'assessments'])->get();
             foreach ($assessors as $a) {
                 fputcsv($output, [
@@ -1041,6 +1059,7 @@ class GoogleSheetService
 
         $payload = [
             'action' => 'cascade_delete_group',
+            'id_kelompok' => (string) $groupNumber,
             'group_number' => (string) $groupNumber,
             'number' => (string) $groupNumber,
             'group_name' => $groupName,
@@ -1059,23 +1078,37 @@ class GoogleSheetService
                 ->post($webhookUrl, $payload);
 
             $status = $response->status();
+            $body = null;
+            if ($status === 302) {
+                $location = $response->header('Location');
+                if ($location) {
+                    try {
+                        $echoRes = Http::timeout(3)->get($location);
+                        if ($echoRes->successful()) {
+                            $body = $echoRes->json();
+                        }
+                    } catch (\Exception $e) {}
+                }
+            } elseif ($response->successful()) {
+                $body = $response->json();
+            }
 
-            // Google Apps Script Web App mengeksekusi operasi penghapusan di spreadsheet terlebih dahulu,
-            // lalu mengembalikan redirect 302 Found (atau 200). Status ini menandakan perintah sudah sukses dieksekusi.
-            if ($status === 302 || $response->successful()) {
-                return [
-                    'success' => true,
-                    'configured' => true,
-                    'action' => 'cascade_deleted_group',
-                    'message' => 'Berhasil mengirim perintah hapus kelompok secara menyeluruh ke Google Spreadsheet.',
-                ];
+            // Fallback cerdas jika Google Apps Script yang terpasang masih versi lama
+            if ($body && isset($body['status']) && $body['status'] === 'error' && str_contains($body['message'] ?? '', 'Aksi tidak dikenal')) {
+                try {
+                    Http::timeout(3)->post($webhookUrl, ['action' => 'delete', 'sheet' => 'Kelompok', 'number' => (string)$groupNumber, 'group_number' => (string)$groupNumber, 'name' => $groupName]);
+                    Http::timeout(3)->post($webhookUrl, ['action' => 'delete', 'sheet' => 'tim_penilai', 'group_number' => (string)$groupNumber, 'delete_all' => true, 'all_group' => true]);
+                    Http::timeout(3)->post($webhookUrl, ['action' => 'delete', 'sheet' => 'Posisi_Job', 'group_number' => (string)$groupNumber]);
+                    Http::timeout(3)->post($webhookUrl, ['action' => 'delete', 'sheet' => 'Pengguna', 'group_number' => (string)$groupNumber, 'group_name' => $groupName]);
+                    Http::timeout(3)->post($webhookUrl, ['action' => 'delete', 'sheet' => 'Hasil_Penilaian', 'group_number' => (string)$groupNumber, 'delete_all' => true]);
+                } catch (\Exception $ex) {}
             }
 
             return [
                 'success' => true,
                 'configured' => true,
                 'action' => 'cascade_deleted_group',
-                'message' => 'Perintah hapus kelompok telah dikirim ke Google Spreadsheet.',
+                'message' => 'Berhasil mengirim perintah hapus kelompok secara menyeluruh ke Google Spreadsheet.',
             ];
         } catch (\Exception $e) {
             Log::warning("Webhook cascadeDeleteGroup Google Sheets notice: " . $e->getMessage());
@@ -2134,6 +2167,27 @@ class GoogleSheetService
     public function getAppsScriptCode(): string
     {
         return <<<'JS'
+function _getColMap(targetSheet) {
+  if (!targetSheet) return {};
+  var lastCol = targetSheet.getLastColumn() || 1;
+  var headers = targetSheet.getRange(1, 1, 1, Math.max(lastCol, 1)).getValues()[0];
+  var map = {};
+  for (var c = 0; c < headers.length; c++) {
+    var h = String(headers[c] || "").trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (h) map[h] = c + 1; // 1-indexed column
+  }
+  return map;
+}
+
+function _findCol(map, candidates, defaultCol) {
+  if (!map) return defaultCol;
+  for (var i = 0; i < candidates.length; i++) {
+    var k = candidates[i].toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (map[k] !== undefined) return map[k];
+  }
+  return defaultCol;
+}
+
 function doPost(e) {
   try {
     var contents = e.postData ? e.postData.contents : "{}";
@@ -2145,17 +2199,17 @@ function doPost(e) {
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
       if (sheetName === "Karyawan") {
-        sheet.appendRow(["NRP", "Nama_Lengkap", "Departemen", "Divisi", "Plant", "Area_WLA"]);
+        sheet.appendRow(["NRP", "Nama_Lengkap", "Departemen", "Divisi", "Plant", "Area_WLA", "ID_Kelompok"]);
       } else if (sheetName === "Kelompok") {
-        sheet.appendRow(["Nomor_Kelompok", "Nama_Kelompok", "Plant"]);
+        sheet.appendRow(["ID_Kelompok", "Nama_Kelompok", "Plant"]);
       } else if (sheetName === "tim_penilai") {
-        sheet.appendRow(["Nomor_Kelompok", "Nama_Kelompok", "NRP_Penilai", "Nama_Penilai", "Peran", "Departemen", "Plant", "Total_Penilaian_Dibuat"]);
+        sheet.appendRow(["ID_Kelompok", "Nama_Kelompok", "NRP_Penilai", "Nama_Penilai", "Peran", "Departemen", "Plant", "Total_Penilaian_Dibuat"]);
       } else if (sheetName === "Posisi_Job") {
-        sheet.appendRow(["Nomor_Kelompok", "Kode_Job", "Nama_Job", "Target_Kuota"]);
+        sheet.appendRow(["ID_Kelompok", "Kode_Job", "Nama_Job", "Target_Kuota"]);
       } else if (sheetName === "Pengguna") {
-        sheet.appendRow(["Nama", "Username", "Email", "Role", "Kelompok"]);
+        sheet.appendRow(["Nama", "Username", "Email", "Role", "Kelompok", "Password", "ID_Kelompok"]);
       } else if (sheetName === "Hasil_Penilaian") {
-        sheet.appendRow(["Tanggal_Waktu", "Nomor_Kelompok", "NRP_Penilai", "Penilai", "NRP_Dinilai", "Karyawan_Dinilai", "Posisi_Job", "Status", "Catatan"]);
+        sheet.appendRow(["Tanggal_Waktu", "ID_Kelompok", "NRP_Penilai", "Penilai", "NRP_Dinilai", "Karyawan_Dinilai", "Posisi_Job", "Status", "Catatan"]);
       }
     }
     
@@ -2568,7 +2622,7 @@ function doPost(e) {
 
     // 5. CASCADE UPDATE KELOMPOK KE SELURUH TAB (Kelompok, tim_penilai, Pengguna, Posisi_Job, Hasil_Penilaian, Karyawan)
     if (action === "cascade_update_group" || action === "update_group") {
-      var newNumber = String(data.number || "").trim();
+      var newNumber = String(data.number || data.id_kelompok || "").trim();
       var oldNumber = String(data.old_number || newNumber).trim();
       var newName = String(data.name || "").trim();
       var oldName = String(data.old_name || newName).trim();
@@ -2579,24 +2633,29 @@ function doPost(e) {
       
       var report = { kelompok: 0, tim_penilai: 0, pengguna: 0, posisi_job: 0, hasil_penilaian: 0, karyawan: 0 };
       
-      // A. PERBARUI TAB 'Kelompok'
+      // A. PERBARUI TAB 'Kelompok' (ID_Kelompok di Kolom 1 / Nama_Kelompok di Kolom 2)
       var sheetKel = ss.getSheetByName("Kelompok");
       if (sheetKel) {
+        var map = _getColMap(sheetKel);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'nomorkelompok', 'nomor', 'id', 'no'], 1);
+        var colName = _findCol(map, ['nama_kelompok', 'namakelompok', 'nama', 'name'], 2);
+        var colPlant = _findCol(map, ['plant', 'lokasi'], 3);
+        
         var vals = sheetKel.getDataRange().getValues();
         var foundKel = false;
         for (var i = 1; i < vals.length; i++) {
-          var colNum = String(vals[i][0] || "").trim();
-          var colName = String(vals[i][1] || "").trim();
-          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+          var rowId = String(vals[i][colId - 1] || "").trim();
+          var rowName = String(vals[i][colName - 1] || "").trim();
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
           
-          if ((cleanOldNumber !== "" && cleanColNum === cleanOldNumber) || 
-              (cleanNewNumber !== "" && cleanColNum === cleanNewNumber) || 
-              (oldName !== "" && colName.toLowerCase() === oldName.toLowerCase()) ||
-              (newName !== "" && colName.toLowerCase() === newName.toLowerCase())) {
+          if ((cleanOldNumber !== "" && cleanRowId === cleanOldNumber) || 
+              (cleanNewNumber !== "" && cleanRowId === cleanNewNumber) || 
+              (oldName !== "" && rowName.toLowerCase() === oldName.toLowerCase()) ||
+              (newName !== "" && rowName.toLowerCase() === newName.toLowerCase())) {
             var rowIdx = i + 1;
-            sheetKel.getRange(rowIdx, 1).setValue(newNumber);
-            sheetKel.getRange(rowIdx, 2).setValue(newName);
-            if (plant) sheetKel.getRange(rowIdx, 3).setValue(plant);
+            if (colId > 0) sheetKel.getRange(rowIdx, colId).setValue(newNumber);
+            if (colName > 0) sheetKel.getRange(rowIdx, colName).setValue(newName);
+            if (colPlant > 0 && plant) sheetKel.getRange(rowIdx, colPlant).setValue(plant);
             foundKel = true;
             report.kelompok++;
             break;
@@ -2608,89 +2667,114 @@ function doPost(e) {
         }
       }
       
-      // B. PERBARUI TAB 'tim_penilai' (Nomor di Kolom 1, Nama_Kelompok di Kolom 2, Departemen di Kolom 6)
+      // B. PERBARUI TAB 'tim_penilai' (ID_Kelompok, Nama_Kelompok, Departemen)
       var sheetPenilai = ss.getSheetByName("tim_penilai");
       if (sheetPenilai) {
+        var map = _getColMap(sheetPenilai);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'nomorkelompok', 'nomor', 'id', 'no'], 1);
+        var colName = _findCol(map, ['nama_kelompok', 'namakelompok', 'nama', 'kelompok'], 2);
+        var colDept = _findCol(map, ['departemen', 'dept', 'divisi'], 6);
+        var colPlant = _findCol(map, ['plant', 'lokasi'], 7);
+        
         var vals = sheetPenilai.getDataRange().getValues();
         for (var i = 1; i < vals.length; i++) {
-          var colNum = String(vals[i][0] || "").trim();
-          var colName = String(vals[i][1] || "").trim();
-          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+          var rowId = String(vals[i][colId - 1] || "").trim();
+          var rowName = String(vals[i][colName - 1] || "").trim();
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
           
-          if ((cleanOldNumber !== "" && cleanColNum === cleanOldNumber) || 
-              (cleanNewNumber !== "" && cleanColNum === cleanNewNumber) || 
-              (oldName !== "" && (colName.toLowerCase() === oldName.toLowerCase() || colName.toLowerCase().indexOf(oldName.toLowerCase()) !== -1))) {
+          if ((cleanOldNumber !== "" && cleanRowId === cleanOldNumber) || 
+              (cleanNewNumber !== "" && cleanRowId === cleanNewNumber) || 
+              (oldName !== "" && (rowName.toLowerCase() === oldName.toLowerCase() || rowName.toLowerCase().indexOf(oldName.toLowerCase()) !== -1))) {
             var rowIdx = i + 1;
-            sheetPenilai.getRange(rowIdx, 1).setValue(newNumber);
-            sheetPenilai.getRange(rowIdx, 2).setValue(newName);
-            sheetPenilai.getRange(rowIdx, 6).setValue(newName);
-            if (plant) sheetPenilai.getRange(rowIdx, 7).setValue(plant);
+            if (colId > 0) sheetPenilai.getRange(rowIdx, colId).setValue(newNumber);
+            if (colName > 0) sheetPenilai.getRange(rowIdx, colName).setValue(newName);
+            if (colDept > 0) sheetPenilai.getRange(rowIdx, colDept).setValue(newName);
+            if (colPlant > 0 && plant) sheetPenilai.getRange(rowIdx, colPlant).setValue(plant);
             report.tim_penilai++;
           }
         }
       }
       
-      // C. PERBARUI TAB 'Pengguna' (Kolom Kelompok di Kolom 5)
+      // C. PERBARUI TAB 'Pengguna' (Kelompok dan ID_Kelompok jika ada)
       var sheetPengguna = ss.getSheetByName("Pengguna");
       if (sheetPengguna) {
+        var map = _getColMap(sheetPengguna);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'id_group'], 0);
+        var colGrp = _findCol(map, ['kelompok', 'nama_kelompok', 'group', 'area'], 5);
+        
         var vals = sheetPengguna.getDataRange().getValues();
         for (var i = 1; i < vals.length; i++) {
-          var colGrp = String(vals[i][4] || "").trim();
-          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var rowGrp = colGrp > 0 ? String(vals[i][colGrp - 1] || "").trim() : "";
+          var rowId = colId > 0 ? String(vals[i][colId - 1] || "").trim() : "";
+          var cleanRowGrp = rowGrp.replace(/[^0-9]/g, '');
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
           
-          if ((cleanOldNumber !== "" && (cleanColGrp === cleanOldNumber || colGrp.toLowerCase().indexOf("kelompok " + cleanOldNumber) !== -1)) ||
-              (cleanNewNumber !== "" && (cleanColGrp === cleanNewNumber || colGrp.toLowerCase().indexOf("kelompok " + cleanNewNumber) !== -1)) ||
-              (oldName !== "" && colGrp.toLowerCase().indexOf(oldName.toLowerCase()) !== -1)) {
+          if ((cleanOldNumber !== "" && (cleanRowId === cleanOldNumber || cleanRowGrp === cleanOldNumber || rowGrp.toLowerCase().indexOf("kelompok " + cleanOldNumber) !== -1)) ||
+              (cleanNewNumber !== "" && (cleanRowId === cleanNewNumber || cleanRowGrp === cleanNewNumber || rowGrp.toLowerCase().indexOf("kelompok " + cleanNewNumber) !== -1)) ||
+              (oldName !== "" && rowGrp.toLowerCase().indexOf(oldName.toLowerCase()) !== -1)) {
             var rowIdx = i + 1;
-            sheetPengguna.getRange(rowIdx, 5).setValue("Kelompok " + newNumber + " (" + newName + ")");
+            if (colGrp > 0) sheetPengguna.getRange(rowIdx, colGrp).setValue("Kelompok " + newNumber + " (" + newName + ")");
+            if (colId > 0) sheetPengguna.getRange(rowIdx, colId).setValue(newNumber);
             report.pengguna++;
           }
         }
       }
       
-      // D. PERBARUI TAB 'Posisi_Job' (jika nomor kelompok berubah)
+      // D. PERBARUI TAB 'Posisi_Job' (ID_Kelompok jika nomor kelompok berubah)
       var sheetJob = ss.getSheetByName("Posisi_Job");
       if (sheetJob && cleanOldNumber !== "") {
+        var map = _getColMap(sheetJob);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'nomorkelompok', 'nomor', 'id', 'no'], 1);
         var vals = sheetJob.getDataRange().getValues();
         for (var i = 1; i < vals.length; i++) {
-          var colNum = String(vals[i][0] || "").trim();
-          var cleanColNum = colNum.replace(/[^0-9]/g, '');
-          if (cleanColNum === cleanOldNumber || colNum === oldNumber) {
-            sheetJob.getRange(i + 1, 1).setValue(newNumber);
+          var rowId = String(vals[i][colId - 1] || "").trim();
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
+          if (cleanRowId === cleanOldNumber || rowId === oldNumber) {
+            sheetJob.getRange(i + 1, colId).setValue(newNumber);
             report.posisi_job++;
           }
         }
       }
       
-      // E. PERBARUI TAB 'Hasil_Penilaian' (jika nomor kelompok berubah)
+      // E. PERBARUI TAB 'Hasil_Penilaian' (ID_Kelompok jika nomor kelompok berubah)
       var sheetHasil = ss.getSheetByName("Hasil_Penilaian");
       if (sheetHasil && cleanOldNumber !== "") {
+        var map = _getColMap(sheetHasil);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'nomorkelompok', 'nomor', 'id', 'no'], 2);
         var vals = sheetHasil.getDataRange().getValues();
         for (var i = 1; i < vals.length; i++) {
-          var colNum = String(vals[i][1] || "").trim();
-          var cleanColNum = colNum.replace(/[^0-9]/g, '');
-          if (cleanColNum === cleanOldNumber || colNum === oldNumber) {
-            sheetHasil.getRange(i + 1, 2).setValue(newNumber);
+          var rowId = String(vals[i][colId - 1] || "").trim();
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
+          if (cleanRowId === cleanOldNumber || rowId === oldNumber) {
+            sheetHasil.getRange(i + 1, colId).setValue(newNumber);
             report.hasil_penilaian++;
           }
         }
       }
       
-      // F. PERBARUI TAB 'Karyawan' (Area_WLA di Kolom 6 jika nama kelompok berubah)
+      // F. PERBARUI TAB 'Karyawan' (Area_WLA dan ID_Kelompok jika ada)
       var sheetKaryawan = ss.getSheetByName("Karyawan");
       if (sheetKaryawan && (oldName !== "" || cleanOldNumber !== "")) {
+        var map = _getColMap(sheetKaryawan);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'id_group'], 0);
+        var colArea = _findCol(map, ['area_wla', 'areawla', 'area', 'wla', 'kelompok'], 6);
+        
         var vals = sheetKaryawan.getDataRange().getValues();
         var oldNameLower = oldName.toLowerCase();
         for (var i = 1; i < vals.length; i++) {
-          var colArea = String(vals[i][5] || "").trim();
-          var colAreaLower = colArea.toLowerCase();
-          var cleanColArea = colAreaLower.replace(/[^0-9]/g, '');
+          var rowArea = colArea > 0 ? String(vals[i][colArea - 1] || "").trim() : "";
+          var rowId = colId > 0 ? String(vals[i][colId - 1] || "").trim() : "";
+          var rowAreaLower = rowArea.toLowerCase();
+          var cleanRowArea = rowAreaLower.replace(/[^0-9]/g, '');
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
 
-          var matchArea = (oldName !== "" && (colAreaLower === oldNameLower || colAreaLower.indexOf(oldNameLower) !== -1 || oldNameLower.indexOf(colAreaLower) !== -1)) ||
-                          (cleanOldNumber !== "" && (cleanColArea === cleanOldNumber || colAreaLower === "kelompok " + cleanOldNumber || colAreaLower.indexOf("kelompok " + cleanOldNumber) !== -1));
+          var matchId = (cleanOldNumber !== "" && (cleanRowId === cleanOldNumber || cleanRowArea === cleanOldNumber));
+          var matchArea = (oldName !== "" && (rowAreaLower === oldNameLower || rowAreaLower.indexOf(oldNameLower) !== -1 || oldNameLower.indexOf(rowAreaLower) !== -1)) ||
+                          (cleanOldNumber !== "" && (cleanRowArea === cleanOldNumber || rowAreaLower === "kelompok " + cleanOldNumber || rowAreaLower.indexOf("kelompok " + cleanOldNumber) !== -1));
 
-          if (matchArea) {
-            sheetKaryawan.getRange(i + 1, 6).setValue(newName);
+          if (matchId || matchArea) {
+            if (colArea > 0) sheetKaryawan.getRange(i + 1, colArea).setValue(newName);
+            if (colId > 0) sheetKaryawan.getRange(i + 1, colId).setValue(newNumber);
             report.karyawan++;
           }
         }
@@ -2786,9 +2870,9 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 8. CASCADE HAPUS KELOMPOK KE SELURUH TAB (Kelompok, tim_penilai, Pengguna, Posisi_Job)
+    // 8. CASCADE HAPUS KELOMPOK KE SELURUH TAB (Kelompok, tim_penilai, Pengguna, Posisi_Job, Hasil_Penilaian, Karyawan)
     if (action === "cascade_delete_group" || action === "delete_group_cascade") {
-      var targetGroupNum = String(data.group_number || data.number || "").trim();
+      var targetGroupNum = String(data.group_number || data.number || data.id_kelompok || "").trim();
       var cleanTargetGrp = targetGroupNum.replace(/[^0-9]/g, '');
       var targetGroupName = String(data.group_name || data.name || "").trim().toLowerCase();
 
@@ -2842,14 +2926,18 @@ function doPost(e) {
       // A. HAPUS DARI TAB 'Kelompok'
       var sheetKel = ss.getSheetByName("Kelompok");
       if (sheetKel) {
+        var map = _getColMap(sheetKel);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'nomorkelompok', 'nomor', 'id', 'no'], 1);
+        var colName = _findCol(map, ['nama_kelompok', 'namakelompok', 'nama', 'name'], 2);
+        
         var vals = sheetKel.getDataRange().getValues();
         for (var i = vals.length - 1; i >= 1; i--) {
-          var colNum = String(vals[i][0] || "").trim();
-          var colName = String(vals[i][1] || "").trim().toLowerCase();
-          var cleanColNum = colNum.replace(/[^0-9]/g, '');
+          var rowId = String(vals[i][colId - 1] || "").trim();
+          var rowName = String(vals[i][colName - 1] || "").trim().toLowerCase();
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
 
-          var matchNum = (cleanTargetGrp !== "" && cleanColNum === cleanTargetGrp) || (targetGroupNum !== "" && colNum === targetGroupNum);
-          var matchName = (targetGroupName !== "" && (colName === targetGroupName || colName.indexOf(targetGroupName) !== -1 || targetGroupName.indexOf(colName) !== -1));
+          var matchNum = (cleanTargetGrp !== "" && cleanRowId === cleanTargetGrp) || (targetGroupNum !== "" && rowId === targetGroupNum);
+          var matchName = (targetGroupName !== "" && (rowName === targetGroupName || rowName.indexOf(targetGroupName) !== -1 || targetGroupName.indexOf(rowName) !== -1));
 
           if (matchNum || matchName) {
             sheetKel.deleteRow(i + 1);
@@ -2861,18 +2949,24 @@ function doPost(e) {
       // B. HAPUS DARI TAB 'tim_penilai' (Ketua & seluruh penilai kelompok ini)
       var sheetPenilai = ss.getSheetByName("tim_penilai");
       if (sheetPenilai) {
+        var map = _getColMap(sheetPenilai);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'nomorkelompok', 'nomor', 'id', 'no'], 1);
+        var colName = _findCol(map, ['nama_kelompok', 'namakelompok', 'nama', 'kelompok'], 2);
+        var colNrp = _findCol(map, ['nrp_penilai', 'nrp', 'nik'], 3);
+        var colPerson = _findCol(map, ['nama_penilai', 'nama', 'penilai'], 4);
+
         var vals = sheetPenilai.getDataRange().getValues();
         for (var i = vals.length - 1; i >= 1; i--) {
-          var colGrp = String(vals[i][0] || "").trim();
-          var colGrpName = String(vals[i][1] || "").trim().toLowerCase();
-          var colNrp = String(vals[i][2] || "").trim().toLowerCase();
-          var colName = String(vals[i][3] || "").trim().toLowerCase();
-          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var rowId = String(vals[i][colId - 1] || "").trim();
+          var rowName = String(vals[i][colName - 1] || "").trim().toLowerCase();
+          var rowNrp = colNrp > 0 ? String(vals[i][colNrp - 1] || "").trim().toLowerCase() : "";
+          var rowPerson = colPerson > 0 ? String(vals[i][colPerson - 1] || "").trim().toLowerCase() : "";
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
 
-          var matchGrp = (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp) ||
-                         (targetGroupNum !== "" && colGrp === targetGroupNum) ||
-                         (targetGroupName !== "" && (colGrpName === targetGroupName || colGrpName.indexOf(targetGroupName) !== -1));
-          var matchPerson = nrpLookup[colNrp] === true || nameLookup[colName] === true;
+          var matchGrp = (cleanTargetGrp !== "" && cleanRowId === cleanTargetGrp) ||
+                         (targetGroupNum !== "" && rowId === targetGroupNum) ||
+                         (targetGroupName !== "" && (rowName === targetGroupName || rowName.indexOf(targetGroupName) !== -1));
+          var matchPerson = nrpLookup[rowNrp] === true || nameLookup[rowPerson] === true;
 
           if (matchGrp || matchPerson) {
             sheetPenilai.deleteRow(i + 1);
@@ -2884,19 +2978,29 @@ function doPost(e) {
       // C. HAPUS DARI TAB 'Pengguna' (Akun Ketua & akun kelompok ini)
       var sheetPengguna = ss.getSheetByName("Pengguna");
       if (sheetPengguna) {
+        var map = _getColMap(sheetPengguna);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'id_group'], 0);
+        var colGrp = _findCol(map, ['kelompok', 'nama_kelompok', 'group', 'area'], 5);
+        var colName = _findCol(map, ['nama', 'fullname', 'name'], 1);
+        var colUser = _findCol(map, ['username', 'nrp'], 2);
+        var colMail = _findCol(map, ['email'], 3);
+
         var vals = sheetPengguna.getDataRange().getValues();
         for (var i = vals.length - 1; i >= 1; i--) {
-          var colName = String(vals[i][0] || "").trim().toLowerCase();
-          var colUser = String(vals[i][1] || "").trim().toLowerCase();
-          var colMail = String(vals[i][2] || "").trim().toLowerCase();
-          var colGrp = String(vals[i][4] || "").trim().toLowerCase();
-          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var rowGrp = colGrp > 0 ? String(vals[i][colGrp - 1] || "").trim().toLowerCase() : "";
+          var rowId = colId > 0 ? String(vals[i][colId - 1] || "").trim() : "";
+          var rowName = colName > 0 ? String(vals[i][colName - 1] || "").trim().toLowerCase() : "";
+          var rowUser = colUser > 0 ? String(vals[i][colUser - 1] || "").trim().toLowerCase() : "";
+          var rowMail = colMail > 0 ? String(vals[i][colMail - 1] || "").trim().toLowerCase() : "";
 
-          var matchGrp = (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp + " ") !== -1 || colGrp === "kelompok " + cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp) !== -1)) ||
-                         (targetGroupName !== "" && (colGrp === targetGroupName || colGrp.indexOf(targetGroupName) !== -1));
-          var matchUser = (colMail !== "" && emailLookup[colMail] === true) ||
-                          (colUser !== "" && nrpLookup[colUser] === true) ||
-                          (colName !== "" && nameLookup[colName] === true);
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
+          var cleanRowGrp = rowGrp.replace(/[^0-9]/g, '');
+
+          var matchGrp = (cleanTargetGrp !== "" && (cleanRowId === cleanTargetGrp || cleanRowGrp === cleanTargetGrp || rowGrp.indexOf("kelompok " + cleanTargetGrp) !== -1)) ||
+                         (targetGroupName !== "" && (rowGrp === targetGroupName || rowGrp.indexOf(targetGroupName) !== -1));
+          var matchUser = (rowMail !== "" && emailLookup[rowMail] === true) ||
+                          (rowUser !== "" && nrpLookup[rowUser] === true) ||
+                          (rowName !== "" && nameLookup[rowName] === true);
 
           if (matchGrp || matchUser) {
             sheetPengguna.deleteRow(i + 1);
@@ -2908,11 +3012,13 @@ function doPost(e) {
       // D. HAPUS DARI TAB 'Posisi_Job'
       var sheetJob = ss.getSheetByName("Posisi_Job");
       if (sheetJob) {
+        var map = _getColMap(sheetJob);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'nomorkelompok', 'nomor', 'id', 'no'], 1);
         var vals = sheetJob.getDataRange().getValues();
         for (var i = vals.length - 1; i >= 1; i--) {
-          var colGrp = String(vals[i][0] || "").trim();
-          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
-          if (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colGrp === targetGroupNum)) {
+          var rowId = String(vals[i][colId - 1] || "").trim();
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
+          if (cleanTargetGrp !== "" && (cleanRowId === cleanTargetGrp || rowId === targetGroupNum)) {
             sheetJob.deleteRow(i + 1);
             report.posisi_job++;
           }
@@ -2922,16 +3028,20 @@ function doPost(e) {
       // E. HAPUS DARI TAB 'Hasil_Penilaian' (Seluruh hasil penilaian terkait kelompok ini)
       var sheetHasil = ss.getSheetByName("Hasil_Penilaian");
       if (sheetHasil) {
-        var vals = sheetHasil.getDataRange().getValues();
-        var is9Col = (vals.length > 0 && vals[0].length >= 9 && String(vals[0][2]).toLowerCase().indexOf("nrp") !== -1);
-        for (var i = vals.length - 1; i >= 1; i--) {
-          var colGrp = String(vals[i][1] || "").trim();
-          var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
-          var colAssNrp = is9Col ? String(vals[i][2] || "").trim().toLowerCase() : "";
-          var colAssName = String(vals[i][is9Col ? 3 : 2] || "").trim().toLowerCase();
+        var map = _getColMap(sheetHasil);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'nomorkelompok', 'nomor', 'id', 'no'], 2);
+        var colAssNrp = _findCol(map, ['nrp_penilai', 'penilai_nrp'], 3);
+        var colAssName = _findCol(map, ['penilai', 'nama_penilai'], 4);
 
-          var matchGrp = (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp) || (targetGroupNum !== "" && colGrp === targetGroupNum);
-          var matchAss = (colAssNrp !== "" && nrpLookup[colAssNrp] === true) || (colAssName !== "" && nameLookup[colAssName] === true);
+        var vals = sheetHasil.getDataRange().getValues();
+        for (var i = vals.length - 1; i >= 1; i--) {
+          var rowId = String(vals[i][colId - 1] || "").trim();
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
+          var aNrp = colAssNrp > 0 ? String(vals[i][colAssNrp - 1] || "").trim().toLowerCase() : "";
+          var aName = colAssName > 0 ? String(vals[i][colAssName - 1] || "").trim().toLowerCase() : "";
+
+          var matchGrp = (cleanTargetGrp !== "" && cleanRowId === cleanTargetGrp) || (targetGroupNum !== "" && rowId === targetGroupNum);
+          var matchAss = (aNrp !== "" && nrpLookup[aNrp] === true) || (aName !== "" && nameLookup[aName] === true);
 
           if (matchGrp || matchAss) {
             sheetHasil.deleteRow(i + 1);
@@ -2940,20 +3050,28 @@ function doPost(e) {
         }
       }
 
-      // F. BERSIHKAN Area_WLA DI TAB 'Karyawan' (KARYAWAN TIDAK DIHAPUS, HANYA AREA KELOMPOK DIKOSONGKAN)
+      // F. BERSIHKAN Area_WLA & ID_Kelompok DI TAB 'Karyawan'
       var sheetKaryawan = ss.getSheetByName("Karyawan");
       if (sheetKaryawan) {
+        var map = _getColMap(sheetKaryawan);
+        var colId = _findCol(map, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'id_group'], 0);
+        var colArea = _findCol(map, ['area_wla', 'areawla', 'area', 'wla', 'kelompok'], 6);
+
         var vals = sheetKaryawan.getDataRange().getValues();
         for (var i = 1; i < vals.length; i++) {
-          var colArea = String(vals[i][5] || "").trim();
-          var colAreaLower = colArea.toLowerCase();
-          var cleanColArea = colAreaLower.replace(/[^0-9]/g, '');
+          var rowArea = colArea > 0 ? String(vals[i][colArea - 1] || "").trim() : "";
+          var rowId = colId > 0 ? String(vals[i][colId - 1] || "").trim() : "";
+          var rowAreaLower = rowArea.toLowerCase();
+          var cleanRowArea = rowAreaLower.replace(/[^0-9]/g, '');
+          var cleanRowId = rowId.replace(/[^0-9]/g, '');
 
-          var matchArea = (targetGroupName !== "" && (colAreaLower === targetGroupName || colAreaLower.indexOf(targetGroupName) !== -1)) ||
-                          (cleanTargetGrp !== "" && (cleanColArea === cleanTargetGrp || colAreaLower.indexOf("kelompok " + cleanTargetGrp) !== -1 || colAreaLower === "kelompok " + cleanTargetGrp));
+          var matchId = (cleanTargetGrp !== "" && (cleanRowId === cleanTargetGrp || cleanRowArea === cleanTargetGrp));
+          var matchArea = (targetGroupName !== "" && (rowAreaLower === targetGroupName || rowAreaLower.indexOf(targetGroupName) !== -1)) ||
+                          (cleanTargetGrp !== "" && (cleanRowArea === cleanTargetGrp || rowAreaLower.indexOf("kelompok " + cleanTargetGrp) !== -1 || rowAreaLower === "kelompok " + cleanTargetGrp));
 
-          if (matchArea) {
-            sheetKaryawan.getRange(i + 1, 6).setValue("");
+          if (matchId || matchArea) {
+            if (colArea > 0) sheetKaryawan.getRange(i + 1, colArea).setValue("");
+            if (colId > 0) sheetKaryawan.getRange(i + 1, colId).setValue("");
             report.karyawan++;
           }
         }
@@ -2972,7 +3090,7 @@ function doPost(e) {
       var targetNrp = data.nrp !== undefined && data.nrp !== null ? String(data.nrp).trim() : "";
       var targetName = (data.fullname || data.name || (data.data ? data.data.fullname : "") || "").trim().toLowerCase();
       var targetJob = (data.job_name || "").trim().toLowerCase();
-      var targetGroup = data.group_number !== undefined && data.group_number !== null ? String(data.group_number).trim() : (data.number !== undefined && data.number !== null ? String(data.number).trim() : "");
+      var targetGroup = data.group_number !== undefined && data.group_number !== null ? String(data.group_number).trim() : (data.number !== undefined && data.number !== null ? String(data.number).trim() : (data.id_kelompok !== undefined && data.id_kelompok !== null ? String(data.id_kelompok).trim() : ""));
       var targetGroupName = (data.group_name || "").trim().toLowerCase();
       var targetEmp = (data.employee_name || "").trim().toLowerCase();
       var targetUser = (data.username || "").trim().toLowerCase();
@@ -3012,7 +3130,7 @@ function doPost(e) {
         var shouldDelete = false;
 
         if (sheetName === "Posisi_Job") {
-          // Columns: [0: Nomor_Kelompok, 1: Kode_Job, 2: Nama_Job, 3: Target_Kuota]
+          // Columns: [0: Nomor_Kelompok / ID_Kelompok, 1: Kode_Job, 2: Nama_Job, 3: Target_Kuota]
           var colGrp = rowValues[0] || "";
           var colJobCode = (rowValues[1] || "").toLowerCase();
           var colJobName = (rowValues[2] || "").toLowerCase();
@@ -3025,17 +3143,19 @@ function doPost(e) {
                       || (targetJob === "" && targetName === "" && targetNrp === "" && targetGroup !== "");
           var matchGrp = (targetGroup === "" || colGrp === targetGroup || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp));
 
-          if (matchJob && matchGrp) shouldDelete = true;
+          if (matchGrp && (matchJob || targetGroup !== "")) shouldDelete = true;
 
         } else if (sheetName === "Pengguna") {
-          // Columns: [0: Nama, 1: Username, 2: Email, 3: Role, 4: Kelompok]
+          // Columns: [0: Nama, 1: Username, 2: Email, 3: Role, 4: Kelompok, 5: Password, 6: ID_Kelompok]
           var colName = (rowValues[0] || "").toLowerCase();
           var colUser = (rowValues[1] || "").toLowerCase();
           var colMail = (rowValues[2] || "").toLowerCase();
           var colGrp = (rowValues[4] || "").toLowerCase();
+          var colId = (rowValues.length >= 7 ? rowValues[6] : "").toLowerCase();
           var q = targetNrp.toLowerCase();
           var cleanTargetGrp = targetGroup.replace(/[^0-9]/g, '');
           var cleanColGrp = colGrp.replace(/[^0-9]/g, '');
+          var cleanColId = colId.replace(/[^0-9]/g, '');
           var tGrpName = targetGroupName || (data.group_name ? String(data.group_name).trim().toLowerCase() : "");
 
           var matchUserIdentifier = (q !== "" && (colName === q || colUser === q || colMail === q)) ||
@@ -3045,7 +3165,7 @@ function doPost(e) {
                                     (nrpSet && (nrpSet[colUser] || nrpSet[colName])) ||
                                     (nameSet && nameSet[colName]);
 
-          var matchUserGroup = (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp + " ") !== -1 || colGrp === "kelompok " + cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp) !== -1)) ||
+          var matchUserGroup = (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || cleanColId === cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp + " ") !== -1 || colGrp === "kelompok " + cleanTargetGrp || colGrp.indexOf("kelompok " + cleanTargetGrp) !== -1)) ||
                                (tGrpName !== "" && (colGrp === tGrpName || colGrp.indexOf(tGrpName) !== -1));
 
           if (matchUserIdentifier || matchUserGroup) {
@@ -3083,7 +3203,7 @@ function doPost(e) {
           }
 
         } else if (sheetName === "Kelompok") {
-          // Columns: [0: Nomor_Kelompok, 1: Nama_Kelompok, 2: Plant]
+          // Columns: [0: Nomor_Kelompok / ID_Kelompok, 1: Nama_Kelompok, 2: Plant]
           var colNum = String(rowValues[0] || "").trim();
           var colKName = String(rowValues[1] || "").trim().toLowerCase();
           var cleanColNum = colNum.replace(/[^0-9]/g, '');
@@ -3098,7 +3218,7 @@ function doPost(e) {
           }
 
         } else if (sheetName === "tim_penilai") {
-          // Columns: [0: Nomor_Kelompok, 1: Nama_Kelompok, 2: NRP_Penilai, 3: Nama_Penilai, 4: Peran, 5: Departemen, 6: Plant, 7: Total_Penilaian_Dibuat]
+          // Columns: [0: Nomor_Kelompok / ID_Kelompok, 1: Nama_Kelompok, 2: NRP_Penilai, 3: Nama_Penilai, 4: Peran, 5: Departemen, 6: Plant, 7: Total_Penilaian_Dibuat]
           var colGrp = String(rowValues[0] || "").trim();
           var colGrpName = String(rowValues[1] || "").trim().toLowerCase();
           var colNrp = String(rowValues[2] || "").trim().toLowerCase();
@@ -3111,7 +3231,7 @@ function doPost(e) {
           var matchGrp = (targetGroup === "" || colGrp === targetGroup || (cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp) || (tGrpName !== "" && (colGrpName === tGrpName || colGrpName.indexOf(tGrpName) !== -1)));
           var matchNrp = (targetNrp !== "" && (colNrp === targetNrp.toLowerCase() || (!isNaN(colNrp) && !isNaN(targetNrp) && Number(colNrp) === Number(targetNrp)) || (nrpSet && nrpSet[colNrp])));
           var matchName = (targetName !== "" && (colName === targetName || colName.indexOf(targetName) !== -1 || targetName.indexOf(colName) !== -1)) || (nameSet && nameSet[colName]);
-          var matchAllInGroup = ((data.all_group === true || data.delete_all === true) && ((cleanTargetGrp !== "" && cleanColGrp === cleanTargetGrp) || colGrp === targetGroup || (tGrpName !== "" && colGrpName === tGrpName)));
+          var matchAllInGroup = (cleanTargetGrp !== "" && (cleanColGrp === cleanTargetGrp || colGrp === targetGroup)) || (tGrpName !== "" && colGrpName === tGrpName);
 
           if ((matchGrp && (matchNrp || matchName)) || matchAllInGroup) {
             shouldDelete = true;

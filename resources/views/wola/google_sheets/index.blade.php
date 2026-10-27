@@ -486,9 +486,9 @@
                             <span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300">
                                 Tab 1: Karyawan
                             </span>
-                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Wajib:</h4>
+                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Relasi:</h4>
                             <p class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1">
-                                NRP, Nama_Lengkap, Departemen, Divisi, Plant, Area_WLA
+                                NRP, Nama_Lengkap, Departemen, Divisi, Plant, Area_WLA, <strong>ID_Kelompok</strong>
                             </p>
                         </div>
                         <a href="{{ route('wola.google-sheets.template', ['type' => 'karyawan']) }}"
@@ -504,9 +504,9 @@
                             <span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300">
                                 Tab 2: Kelompok
                             </span>
-                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Wajib:</h4>
+                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Relasi:</h4>
                             <p class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1">
-                                Nomor_Kelompok, Nama_Kelompok, Plant
+                                <strong>ID_Kelompok</strong> (Nomor_Kelompok), Nama_Kelompok, Plant
                             </p>
                         </div>
                         <a href="{{ route('wola.google-sheets.template', ['type' => 'kelompok']) }}"
@@ -522,9 +522,9 @@
                             <span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-300">
                                 Tab 3: tim_penilai
                             </span>
-                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Wajib:</h4>
+                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Relasi:</h4>
                             <p class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1">
-                                Kelompok, Nama_Kelompok, NRP_Penilai, Nama_Penilai, Peran, Dept, Plant
+                                <strong>ID_Kelompok</strong>, Nama_Kelompok, NRP_Penilai, Nama_Penilai, Peran, Dept, Plant
                             </p>
                         </div>
                         <a href="{{ route('wola.google-sheets.template', ['type' => 'tim_penilai']) }}"
@@ -540,9 +540,9 @@
                             <span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300">
                                 Tab 4: Posisi_Job
                             </span>
-                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Wajib:</h4>
+                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Relasi:</h4>
                             <p class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1">
-                                Nomor_Kelompok, Kode_Job, Nama_Job, Target_Kuota
+                                <strong>ID_Kelompok</strong>, Kode_Job, Nama_Job, Target_Kuota
                             </p>
                         </div>
                         <a href="{{ route('wola.google-sheets.template', ['type' => 'posisi_job']) }}"
@@ -558,9 +558,9 @@
                             <span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300">
                                 Tab 5: Hasil_Penilaian
                             </span>
-                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Hasil (9 Kolom):</h4>
+                            <h4 class="font-bold text-xs text-slate-800 dark:text-white mt-2">Kolom Relasi:</h4>
                             <p class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1">
-                                Tanggal, Kelompok, <strong>NRP_Penilai</strong>, Penilai, <strong>NRP_Dinilai</strong>, Karyawan, Job, Status, Catatan
+                                Tanggal, <strong>ID_Kelompok</strong>, NRP_Penilai, Penilai, NRP_Dinilai, Karyawan, Job, Status, Catatan
                             </p>
                         </div>
                         <a href="{{ route('wola.google-sheets.template', ['type' => 'hasil_penilaian']) }}"

@@ -22,10 +22,15 @@ class FullDatabaseExport implements WithMultipleSheets
             new class implements FromArray, WithTitle, WithHeadings, ShouldAutoSize {
                 public function title(): string { return 'Karyawan'; }
                 public function headings(): array {
-                    return ['NRP', 'Nama_Lengkap', 'Departemen', 'Divisi', 'Plant', 'Area_WLA'];
+                    return ['NRP', 'Nama_Lengkap', 'Departemen', 'Divisi', 'Plant', 'Area_WLA', 'ID_Kelompok'];
                 }
                 public function array(): array {
-                    return Employee::orderBy('nrp')->get()->map(function($e) {
+                    $groups = Group::all()->keyBy('name');
+                    return Employee::orderBy('nrp')->get()->map(function($e) use ($groups) {
+                        $grpId = '';
+                        if (!empty($e->area_wla) && isset($groups[$e->area_wla])) {
+                            $grpId = $groups[$e->area_wla]->number;
+                        }
                         return [
                             'nrp' => $e->nrp,
                             'fullname' => $e->fullname,
@@ -33,6 +38,7 @@ class FullDatabaseExport implements WithMultipleSheets
                             'division' => $e->division,
                             'plant' => $e->plant,
                             'area_wla' => $e->area_wla,
+                            'id_kelompok' => $grpId,
                         ];
                     })->toArray();
                 }
@@ -40,7 +46,7 @@ class FullDatabaseExport implements WithMultipleSheets
             new class implements FromArray, WithTitle, WithHeadings, ShouldAutoSize {
                 public function title(): string { return 'Kelompok'; }
                 public function headings(): array {
-                    return ['Nomor_Kelompok', 'Nama_Kelompok', 'Plant'];
+                    return ['ID_Kelompok', 'Nama_Kelompok', 'Plant'];
                 }
                 public function array(): array {
                     return Group::orderBy('number')->get()->map(function($g) {
@@ -55,7 +61,7 @@ class FullDatabaseExport implements WithMultipleSheets
             new class implements FromArray, WithTitle, WithHeadings, ShouldAutoSize {
                 public function title(): string { return 'tim_penilai'; }
                 public function headings(): array {
-                    return ['Nomor_Kelompok', 'Nama_Kelompok', 'NRP_Penilai', 'Nama_Penilai', 'Peran', 'Departemen', 'Plant', 'Total_Penilaian_Dibuat'];
+                    return ['ID_Kelompok', 'Nama_Kelompok', 'NRP_Penilai', 'Nama_Penilai', 'Peran', 'Departemen', 'Plant', 'Total_Penilaian_Dibuat'];
                 }
                 public function array(): array {
                     return GroupAssessor::with(['group', 'employee', 'assessments'])->get()
@@ -79,7 +85,7 @@ class FullDatabaseExport implements WithMultipleSheets
             new class implements FromArray, WithTitle, WithHeadings, ShouldAutoSize {
                 public function title(): string { return 'Posisi_Job'; }
                 public function headings(): array {
-                    return ['Nomor_Kelompok', 'Kode_Job', 'Nama_Job', 'Target_Kuota'];
+                    return ['ID_Kelompok', 'Kode_Job', 'Nama_Job', 'Target_Kuota'];
                 }
                 public function array(): array {
                     return Job::with('group')->orderBy('group_id')->orderBy('code')->get()->map(function($j) {
@@ -95,7 +101,7 @@ class FullDatabaseExport implements WithMultipleSheets
             new class implements FromArray, WithTitle, WithHeadings, ShouldAutoSize {
                 public function title(): string { return 'Pengguna'; }
                 public function headings(): array {
-                    return ['Nama', 'Username', 'Email', 'Role', 'Kelompok'];
+                    return ['Nama', 'Username', 'Email', 'Role', 'Kelompok', 'ID_Kelompok'];
                 }
                 public function array(): array {
                     return User::with(['roles', 'group'])->get()->map(function($u) {
@@ -105,6 +111,7 @@ class FullDatabaseExport implements WithMultipleSheets
                             'email' => $u->email,
                             'role' => $u->roles->pluck('name')->implode(', '),
                             'group' => $u->group ? "Kelompok {$u->group->number} ({$u->group->name})" : 'Semua Area',
+                            'id_kelompok' => $u->group ? $u->group->number : '',
                         ];
                     })->toArray();
                 }
@@ -112,7 +119,7 @@ class FullDatabaseExport implements WithMultipleSheets
             new class implements FromArray, WithTitle, WithHeadings, ShouldAutoSize {
                 public function title(): string { return 'Hasil_Penilaian'; }
                 public function headings(): array {
-                    return ['Tanggal_Waktu', 'Nomor_Kelompok', 'NRP_Penilai', 'Penilai', 'NRP_Dinilai', 'Karyawan_Dinilai', 'Posisi_Job', 'Status', 'Catatan'];
+                    return ['Tanggal_Waktu', 'ID_Kelompok', 'NRP_Penilai', 'Penilai', 'NRP_Dinilai', 'Karyawan_Dinilai', 'Posisi_Job', 'Status', 'Catatan'];
                 }
                 public function array(): array {
                     return Assessment::with(['group', 'assessor.employee', 'employee', 'job'])
