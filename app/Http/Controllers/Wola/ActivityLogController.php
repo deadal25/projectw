@@ -78,7 +78,7 @@ class ActivityLogController extends Controller
 
         $activityLog->delete();
 
-        return redirect()->back()->with('success', "Log aktivitas #{$id} [{$action}] berhasil dihapus.");
+        return redirect()->back()->with('success', "Log aktivitas berhasil dihapus.");
     }
 
     /**
@@ -124,13 +124,6 @@ class ActivityLogController extends Controller
 
         ActivityLog::query()->delete();
 
-        // Rekam jejak audit baru bahwa superadmin telah membersihkan log
-        ActivityLog::log(
-            'PURGE_ACTIVITY_LOGS',
-            "Superadmin membersihkan seluruh riwayat log aktivitas sistem ({$total} catatan dibersihkan).",
-            ['previous_total_records' => $total]
-        );
-
-        return redirect()->back()->with('success', "Seluruh catatan log aktivitas sistem ({$total} data) berhasil dibersihkan.");
+        return redirect()->back()->with('success', "Seluruh catatan log aktivitas berhasil dibersihkan.");
     }
 }
