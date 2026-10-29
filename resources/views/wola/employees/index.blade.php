@@ -219,10 +219,10 @@
                             <option value="">Semua AREA WLA</option>
                             @foreach($areas as $a)
                                 @php
-                                    $matchedGroup = isset($groups) ? $groups->firstWhere('name', $a) : null;
+                                    $matchedGroup = isset($groups) ? $groups->first(fn($g) => strcasecmp(trim($g->name), trim($a)) === 0) : null;
                                 @endphp
-                                <option value="{{ $a }}" {{ $areaWla === $a ? 'selected' : '' }}>
-                                    {{ $matchedGroup ? 'Kelompok ' . $matchedGroup->number . ': ' . $a : $a }}
+                                <option value="{{ $a }}" {{ strcasecmp((string)$areaWla, (string)$a) === 0 ? 'selected' : '' }}>
+                                    {{ $matchedGroup ? 'Kelompok ' . $matchedGroup->number . ': ' . $matchedGroup->name : $a }}
                                 </option>
                             @endforeach
                         </select>
@@ -747,9 +747,9 @@
                                 class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500">
                             <option value="">-- Pilih Area WLA yang Ingin Dihapus --</option>
                             @foreach($areas as $a)
-                                @php $matchedGroup = isset($groups) ? $groups->firstWhere('name', $a) : null; @endphp
+                                @php $matchedGroup = isset($groups) ? $groups->first(fn($g) => strcasecmp(trim($g->name), trim($a)) === 0) : null; @endphp
                                 <option value="{{ $a }}">
-                                    {{ $matchedGroup ? 'Kelompok ' . $matchedGroup->number . ': ' . $a : $a }} ({{ $areaCounts[$a] ?? 0 }} karyawan)
+                                    {{ $matchedGroup ? 'Kelompok ' . $matchedGroup->number . ': ' . $matchedGroup->name : $a }} ({{ $areaCounts[$a] ?? 0 }} karyawan)
                                 </option>
                             @endforeach
                         </select>

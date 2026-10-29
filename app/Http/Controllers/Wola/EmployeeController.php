@@ -98,7 +98,13 @@ class EmployeeController extends Controller
         }
 
         if ($areaWla) {
-            $query->where('area_wla', $areaWla);
+            $cleanArea = trim((string)$areaWla);
+            $query->where(function ($q) use ($cleanArea) {
+                $q->whereRaw('LOWER(TRIM(area_wla)) = ?', [strtolower($cleanArea)])
+                  ->orWhereHas('groupEmployees.group', function ($gq) use ($cleanArea) {
+                      $gq->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($cleanArea)]);
+                  });
+            });
         }
 
         if ($division) {
@@ -118,13 +124,23 @@ class EmployeeController extends Controller
         // Data untuk dropdown filter - selalu urutkan kelompok mulai dari Kelompok 1..12
         $groups = Group::orderBy('number')->get();
         $groupAreaNames = $groups->pluck('name')->filter()->values()->toArray();
-        $otherAreas = Employee::distinct()
+        $groupAreaNamesLower = array_map('strtolower', array_map('trim', $groupAreaNames));
+
+        $allEmployeeAreas = Employee::distinct()
             ->whereNotNull('area_wla')
             ->where('area_wla', '!=', '')
-            ->whereNotIn('area_wla', $groupAreaNames)
             ->orderBy('area_wla')
             ->pluck('area_wla')
             ->toArray();
+
+        // Hanya sertakan area lain jika benar-benar tidak terdaftar pada kelompok mana pun (case-insensitive)
+        $otherAreas = [];
+        foreach ($allEmployeeAreas as $empArea) {
+            $lowerEmpArea = strtolower(trim($empArea));
+            if (!in_array($lowerEmpArea, $groupAreaNamesLower)) {
+                $otherAreas[] = $empArea;
+            }
+        }
         $areas = collect(array_merge($groupAreaNames, $otherAreas));
 
         $divisions = Employee::distinct()->whereNotNull('division')->where('division', '!=', '')->orderBy('division')->pluck('division');

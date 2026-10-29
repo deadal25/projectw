@@ -14,7 +14,7 @@ if (extension_loaded('zlib') && !ini_get('zlib.output_compression')) {
 // Copy SQLite database to /tmp if needed on Vercel
 $tmpDb = '/tmp/database.sqlite';
 $bundledDb = __DIR__ . '/../database/database.sqlite';
-if (!file_exists($tmpDb) || filesize($tmpDb) === 0) {
+if (!file_exists($tmpDb) || filesize($tmpDb) === 0 || (file_exists($bundledDb) && @filemtime($bundledDb) > @filemtime($tmpDb))) {
     if (file_exists($bundledDb)) {
         @copy($bundledDb, $tmpDb);
     } else {
