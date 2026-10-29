@@ -263,15 +263,9 @@ class EmployeeController extends Controller
         );
 
         // Sinkronisasi otomatis ke Google Spreadsheet via Webhook Apps Script
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->appendEmployee($employee);
-        if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis ditambahkan ke Google Spreadsheet!";
-        } elseif (!$sheetRes['configured']) {
-            $sheetSyncNote = " (Catatan: Hubungkan Webhook Google Sheets agar otomatis tertambah ke Google Spreadsheet)";
-        }
+        $this->googleSheetService->appendEmployee($employee);
 
-        return redirect()->route('wola.employees.index')->with('success', "Karyawan {$employee->fullname} ({$employee->nrp}) berhasil ditambahkan ke " . ($group ? "Kelompok {$group->number} ({$group->name})" : "Master Data") . ".{$sheetSyncNote}");
+        return redirect()->route('wola.employees.index')->with('success', "Data karyawan {$employee->fullname} berhasil ditambahkan.");
     }
 
     /**
@@ -383,7 +377,7 @@ class EmployeeController extends Controller
 
         $this->googleSheetService->updateEmployee($employee);
 
-        return redirect()->route('wola.employees.index')->with('success', "Data karyawan {$employee->fullname} berhasil diperbarui di database dan Google Spreadsheet.");
+        return redirect()->route('wola.employees.index')->with('success', "Data karyawan {$employee->fullname} berhasil diperbarui.");
     }
 
     /**
@@ -401,13 +395,7 @@ class EmployeeController extends Controller
             ['nrp' => $nrp]
         );
 
-        $sheetNote = '';
-        $sheetSettings = $this->googleSheetService->getSettings();
-        if (!empty($sheetSettings['apps_script_url'])) {
-            $sheetNote = ' 🟢 Otomatis dihapus juga dari Google Spreadsheet!';
-        }
-
-        return redirect()->route('wola.employees.index')->with('success', "Karyawan {$name} ({$nrp}) berhasil dihapus.{$sheetNote}");
+        return redirect()->route('wola.employees.index')->with('success', "Data karyawan {$name} ({$nrp}) berhasil dihapus.");
     }
 
     /**
@@ -438,14 +426,8 @@ class EmployeeController extends Controller
             ['ids' => $ids]
         );
 
-        $sheetNote = '';
-        $sheetSettings = $this->googleSheetService->getSettings();
-        if (!empty($sheetSettings['apps_script_url'])) {
-            $sheetNote = ' 🟢 Otomatis dihapus juga dari Google Spreadsheet!';
-        }
-
         return redirect()->route('wola.employees.index')
-            ->with('success', "Sebanyak {$deleted} data karyawan terpilih berhasil dihapus.{$sheetNote}");
+            ->with('success', "Sebanyak {$deleted} data karyawan terpilih berhasil dihapus.");
     }
 
     /**
@@ -493,14 +475,8 @@ class EmployeeController extends Controller
             ['type' => $type, 'value' => $value]
         );
 
-        $sheetNote = '';
-        $sheetSettings = $this->googleSheetService->getSettings();
-        if (!empty($sheetSettings['apps_script_url'])) {
-            $sheetNote = ' 🟢 Otomatis dihapus juga dari Google Spreadsheet!';
-        }
-
         return redirect()->route('wola.employees.index')
-            ->with('success', "Seluruh karyawan ({$deleted} orang) pada {$typeLabel} \"{$value}\" berhasil dihapus.{$sheetNote}");
+            ->with('success', "Seluruh karyawan ({$deleted} orang) pada {$typeLabel} \"{$value}\" berhasil dihapus.");
     }
 
     /**
@@ -612,14 +588,12 @@ class EmployeeController extends Controller
         });
 
         // Hapus juga seluruh baris di Google Spreadsheet jika webhook aktif
-        $sheetNote = '';
         $sheetSettings = $this->googleSheetService->getSettings();
         if (!empty($sheetSettings['apps_script_url'])) {
             $this->googleSheetService->clearEmployeesSheet();
-            $sheetNote = ' 🟢 Seluruh baris di Google Spreadsheet juga telah dibersihkan!';
         }
 
-        return redirect()->route('wola.employees.index')->with('success', "Berhasil menghapus seluruh ({$total}) data karyawan master.{$sheetNote}");
+        return redirect()->route('wola.employees.index')->with('success', "Seluruh data karyawan berhasil dibersihkan.");
     }
 
     /**
@@ -659,7 +633,7 @@ class EmployeeController extends Controller
         $request->validate([
             'file' => 'required|file|mimes:xlsx,xls,csv,txt|max:5120',
         ], [
-            'file.required' => 'Pilih file spreadsheet terlebih dahulu.',
+            'file.required' => 'Pilih file terlebih dahulu.',
             'file.mimes' => 'Format file harus berupa Excel (.xlsx, .xls) atau CSV (.csv).',
             'file.max' => 'Ukuran file maksimal 5MB.',
         ]);

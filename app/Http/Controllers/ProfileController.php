@@ -87,7 +87,7 @@ class ProfileController extends Controller
         $groupNumber = $user->group ? $user->group->number : null;
         $groupName = $user->group ? "Kelompok {$user->group->number} ({$user->group->name})" : 'Semua Area';
 
-        $sheetRes = $googleSheetService->cascadeUpdatePerson([
+        $googleSheetService->cascadeUpdatePerson([
             'nrp' => $newNrp,
             'old_nrp' => $oldNrp ?: $newNrp,
             'name' => $user->name,
@@ -99,15 +99,9 @@ class ProfileController extends Controller
             'group_name' => $groupName,
         ]);
 
-        $statusMsg = 'Profil berhasil diperbarui.';
-        if ($sheetRes['success'] ?? false) {
-            $tabName = $user->hasRole('ketua') ? "Pengguna & tim_penilai" : "Pengguna";
-            $statusMsg .= " 🟢 Otomatis tersinkronkan ke Google Spreadsheet (sheet {$tabName})!";
-        }
-
         return Redirect::route('profile.edit')
             ->with('status', 'profile-updated')
-            ->with('sync_success', $statusMsg);
+            ->with('sync_success', 'Profil berhasil diperbarui.');
     }
 
     /**

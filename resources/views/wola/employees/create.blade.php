@@ -22,51 +22,6 @@
         <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
             <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-8">
                 
-                <!-- Status Integrasi Google Spreadsheet -->
-                @if(!empty($isWebhookConfigured))
-                    <div class="mb-6 p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center justify-between">
-                        <div class="flex items-center space-x-3">
-                            <span class="flex h-3 w-3 relative">
-                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                            </span>
-                            <div>
-                                <p class="text-xs font-bold text-emerald-800 dark:text-emerald-200">
-                                    Sinkronisasi Otomatis Google Spreadsheet Aktif
-                                </p>
-                                <p class="text-[11px] text-emerald-600 dark:text-emerald-300">
-                                    Saat Anda menekan tombol Simpan, data karyawan ini akan otomatis bertambah ke tab <strong>'Karyawan'</strong> di Google Spreadsheet Anda.
-                                </p>
-                            </div>
-                        </div>
-                        <span class="hidden sm:inline-flex text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-2.5 py-1 rounded-lg">
-                            2-Way Sync
-                        </span>
-                    </div>
-                @else
-                    <div class="mb-6 p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start sm:items-center justify-between gap-3">
-                        <div class="flex items-start sm:items-center space-x-3">
-                            <svg class="w-5 h-5 text-amber-500 shrink-0 mt-0.5 sm:mt-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                            <div>
-                                <p class="text-xs font-bold text-amber-800 dark:text-amber-200">
-                                    Sinkronisasi Otomatis ke Spreadsheet Belum Dihubungkan
-                                </p>
-                                <p class="text-[11px] text-amber-700 dark:text-amber-300">
-                                    Data karyawan tetap aman tersimpan di aplikasi ini. Jika ingin data langsung bertambah ke Google Spreadsheet saat disimpan, aktifkan Webhook di menu <a href="{{ route('wola.google-sheets.index') }}" class="underline font-bold hover:text-amber-900 dark:hover:text-amber-100">Integrasi Spreadsheet</a>.
-                                </p>
-                            </div>
-                        </div>
-                        @hasrole('superadmin')
-                            <a href="{{ route('wola.google-sheets.index') }}"
-                               class="shrink-0 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] rounded-lg shadow-sm transition">
-                                Hubungkan
-                            </a>
-                        @endhasrole
-                    </div>
-                @endif
-
                 <form method="POST" action="{{ route('wola.employees.store') }}" class="space-y-6">
                     @csrf
 

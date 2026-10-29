@@ -221,16 +221,9 @@ class UserController extends Controller
         );
 
         // Sinkronisasi otomatis ke Google Spreadsheet via Webhook Apps Script
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->appendUser($user, $validated['role'], $validated['password']);
-        if ($sheetRes['success']) {
-            $tabNote = $user->hasRole('ketua') ? "Pengguna & tim_penilai" : "Pengguna";
-            $sheetSyncNote = " 🟢 Otomatis ditambahkan ke Google Spreadsheet tab {$tabNote}!";
-        } elseif (!$sheetRes['configured']) {
-            $sheetSyncNote = " (Catatan: Hubungkan Webhook Google Sheets agar otomatis tertambah ke Google Spreadsheet)";
-        }
+        $this->googleSheetService->appendUser($user, $validated['role'], $validated['password']);
 
-        return redirect()->route('wola.users.index')->with('success', "Akun {$user->name} berhasil dibuat.{$sheetSyncNote}");
+        return redirect()->route('wola.users.index')->with('success', "Akun {$user->name} berhasil ditambahkan.");
     }
 
     /**
@@ -364,10 +357,9 @@ class UserController extends Controller
         );
 
         // Sinkronisasi otomatis ke Google Spreadsheet secara relasional (Pengguna, tim_penilai, Karyawan, Hasil_Penilaian)
-        $sheetSyncNote = '';
         $user->load(['group', 'employee']);
         $newNrp = $user->username ?: ($user->employee?->nrp ?? '');
-        $sheetRes = $this->googleSheetService->cascadeUpdatePerson([
+        $this->googleSheetService->cascadeUpdatePerson([
             'nrp' => $newNrp,
             'old_nrp' => $oldNrp ?: $newNrp,
             'name' => $user->name,
@@ -380,12 +372,7 @@ class UserController extends Controller
             'password' => !empty($validated['password']) ? $validated['password'] : null,
         ]);
 
-        if ($sheetRes['success']) {
-            $tabNote = $user->hasRole('ketua') ? "Pengguna & tim_penilai" : "Pengguna";
-            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet tab {$tabNote}!";
-        }
-
-        return redirect()->route('wola.users.index')->with('success', "Akun {$user->name} berhasil diperbarui.{$sheetSyncNote}");
+        return redirect()->route('wola.users.index')->with('success', "Akun {$user->name} berhasil diperbarui.");
     }
 
     /**
@@ -497,16 +484,11 @@ class UserController extends Controller
         );
 
         // Sinkronisasi hapus akun pengguna di Google Spreadsheet tab Pengguna
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->deleteUser($name, $email, $username, $groupNumber);
-        if ($sheetRes['success']) {
-            $tabNote = $isKetua ? "Pengguna & seluruh anggota tim penilai tab tim_penilai" : "Pengguna";
-            $sheetSyncNote = " 🟢 Otomatis dihapus juga dari Google Spreadsheet tab {$tabNote}!";
-        }
+        $this->googleSheetService->deleteUser($name, $email, $username, $groupNumber);
 
         $successMsg = $isKetua 
-            ? "Akun Ketua {$name} beserta seluruh anggota tim penilai kelompok " . ($groupNumber ? "{$groupNumber}" : '') . " berhasil dihapus.{$sheetSyncNote}"
-            : "Akun {$name} berhasil dihapus.{$sheetSyncNote}";
+            ? "Akun Ketua {$name} beserta seluruh anggota tim penilai berhasil dihapus."
+            : "Akun {$name} berhasil dihapus.";
 
         return redirect()->route('wola.users.index')->with('success', $successMsg);
     }
@@ -533,10 +515,10 @@ class UserController extends Controller
             $tab = $request->input('tab', 'assessors');
 
             return redirect()->route('wola.users.index', ['tab' => $tab])
-                ->with('success', "Sinkronisasi berhasil! {$totalAdded} data ditambahkan, {$totalUpdated} diperbarui langsung dari Google Spreadsheet (Kelompok, Pengguna, dan tim_penilai).");
+                ->with('success', "Sinkronisasi berhasil diselesaikan.");
         } catch (\Exception $e) {
             return redirect()->route('wola.users.index')
-                ->with('error', "Gagal menyinkronkan data dari Google Spreadsheet: " . $e->getMessage());
+                ->with('error', "Gagal melakukan sinkronisasi: " . $e->getMessage());
         }
     }
 }

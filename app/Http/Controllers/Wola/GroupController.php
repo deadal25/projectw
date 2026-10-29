@@ -159,15 +159,9 @@ class GroupController extends Controller
         );
 
         // Sinkronisasi otomatis ke Google Spreadsheet via Webhook Apps Script
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->appendGroup($group);
-        if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis ditambahkan ke Google Spreadsheet tab Kelompok!";
-        } elseif (!$sheetRes['configured']) {
-            $sheetSyncNote = " (Catatan: Hubungkan Webhook Google Sheets agar otomatis tertambah ke Google Spreadsheet)";
-        }
+        $this->googleSheetService->appendGroup($group);
 
-        return redirect()->route('wola.groups.index')->with('success', "Kelompok {$group->number} ({$group->name}) berhasil dibuat beserta 10 jabatan awal.{$sheetSyncNote}");
+        return redirect()->route('wola.groups.index')->with('success', "Kelompok {$group->number} ({$group->name}) berhasil ditambahkan.");
     }
 
     /**
@@ -300,19 +294,13 @@ class GroupController extends Controller
         );
 
         // Sinkronisasi otomatis ke Google Spreadsheet secara cascade (Kelompok, tim_penilai, Pengguna, Karyawan)
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->updateGroup($group, $oldNumber, $oldName, $oldPlant);
-        if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet (Kelompok, tim_penilai, Pengguna, dan Area WLA Karyawan)!";
-        } elseif (!empty($sheetRes['need_deploy'])) {
-            $sheetSyncNote = " (⚠️ Catatan Spreadsheet: Salin & terapkan kode Apps Script terbaru di menu Ekstensi > Apps Script agar pembaruan nama di tab Karyawan, tim_penilai, dan Pengguna berjalan otomatis).";
-        }
+        $this->googleSheetService->updateGroup($group, $oldNumber, $oldName, $oldPlant);
 
         if ($request->input('redirect_to') === 'show') {
-            return redirect()->route('wola.groups.show', $group)->with('success', "Informasi kelompok {$group->number} berhasil diperbarui.{$sheetSyncNote}");
+            return redirect()->route('wola.groups.show', $group)->with('success', "Informasi kelompok {$group->number} berhasil diperbarui.");
         }
 
-        return redirect()->route('wola.groups.index')->with('success', "Informasi kelompok {$group->number} ({$group->name}) berhasil diperbarui.{$sheetSyncNote}");
+        return redirect()->route('wola.groups.index')->with('success', "Informasi kelompok {$group->number} ({$group->name}) berhasil diperbarui.");
     }
 
     /**
@@ -449,13 +437,7 @@ class GroupController extends Controller
             'employee_nrps' => $affectedEmployeeNrps,
         ]);
 
-        if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis dihapus juga dari database Google Spreadsheet (tab Kelompok, tim_penilai, Pengguna, Posisi_Job, Hasil_Penilaian, dan reset Area WLA Karyawan)!";
-        } elseif (!$sheetRes['configured']) {
-            $sheetSyncNote = " (Catatan: Hubungkan Webhook Google Sheets agar otomatis terhapus dari Google Spreadsheet)";
-        }
-
-        return redirect()->route('wola.groups.index')->with('success', "Kelompok {$num} ({$name}) beserta nama Ketua, seluruh tim penilai, jabatan, dan hasil penilaian berhasil dihapus dari sistem.{$sheetSyncNote}");
+        return redirect()->route('wola.groups.index')->with('success', "Kelompok {$num} ({$name}) berhasil dihapus.");
     }
 
     // =========================================================================
@@ -490,14 +472,10 @@ class GroupController extends Controller
         );
 
         // Sinkronisasi otomatis ke Google Spreadsheet tab Posisi_Job
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->appendJob($job, $group);
-        if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis ditambahkan ke Google Spreadsheet tab Posisi_Job!";
-        }
+        $this->googleSheetService->appendJob($job, $group);
 
         return redirect()->route('wola.groups.show', [$group, 'tab' => 'jobs'])
-            ->with('success', "Jabatan '{$job->name}' berhasil ditambahkan ke Kelompok {$group->number}.{$sheetSyncNote}");
+            ->with('success', "Jabatan '{$job->name}' berhasil ditambahkan.");
     }
 
     public function updateJob(Request $request, Group $group, Job $job)
@@ -527,14 +505,10 @@ class GroupController extends Controller
         );
 
         // Sinkronisasi otomatis ke Google Spreadsheet tab Posisi_Job
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->updateJob($group->number, $job, $oldName, $oldCode);
-        if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di Google Spreadsheet tab Posisi_Job!";
-        }
+        $this->googleSheetService->updateJob($group->number, $job, $oldName, $oldCode);
 
         return redirect()->route('wola.groups.show', [$group, 'tab' => 'jobs'])
-            ->with('success', "Jabatan '{$job->name}' berhasil diperbarui.{$sheetSyncNote}");
+            ->with('success', "Jabatan '{$job->name}' berhasil diperbarui.");
     }
 
     public function removeJob(Group $group, Job $job)
@@ -556,14 +530,10 @@ class GroupController extends Controller
         );
 
         // Sinkronisasi hapus dari Google Spreadsheet tab Posisi_Job
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->deleteJob($name, $group->number, $jobCode);
-        if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis dihapus juga dari Google Spreadsheet tab Posisi_Job!";
-        }
+        $this->googleSheetService->deleteJob($name, $group->number, $jobCode);
 
         return redirect()->route('wola.groups.show', [$group, 'tab' => 'jobs'])
-            ->with('success', "Jabatan '{$name}' berhasil dihapus.{$sheetSyncNote}");
+            ->with('success', "Jabatan '{$name}' berhasil dihapus.");
     }
 
     /**
@@ -696,15 +666,9 @@ class GroupController extends Controller
         );
 
         // Sinkronisasi otomatis ke Google Spreadsheet tab tim_penilai
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->appendAssessor($assessor, $group);
-        if ($sheetRes['success']) {
-            $sheetSyncNote = " 🟢 Otomatis ditambahkan ke Google Spreadsheet tab tim_penilai!";
-        } elseif (!$sheetRes['configured']) {
-            $sheetSyncNote = " (Catatan: Hubungkan Webhook Google Sheets agar otomatis tertambah ke Google Spreadsheet)";
-        }
+        $this->googleSheetService->appendAssessor($assessor, $group);
 
-        return back()->with('success', "Penilai '{$assessor->employee->fullname}' berhasil ditambahkan ke Kelompok {$group->number}.{$sheetSyncNote}");
+        return back()->with('success', "Penilai '{$assessor->employee->fullname}' berhasil ditambahkan.");
     }
 
     public function updateAssessor(Request $request, Group $group, GroupAssessor $assessor)
@@ -787,7 +751,7 @@ class GroupController extends Controller
 
         // Sinkronisasi otomatis ke Google Spreadsheet secara relasional
         $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->cascadeUpdatePerson([
+        $this->googleSheetService->cascadeUpdatePerson([
             'nrp' => $newNrp,
             'old_nrp' => $oldNrp ?? '',
             'name' => $assessorName,
@@ -799,12 +763,7 @@ class GroupController extends Controller
             'group_name' => "Kelompok {$group->number} ({$group->name})",
         ]);
 
-        if ($sheetRes['success']) {
-            $tabName = $assessor->is_leader ? 'Pengguna, tim_penilai & Karyawan' : 'tim_penilai & Karyawan';
-            $sheetSyncNote = " 🟢 Otomatis diperbarui juga di database Google Spreadsheet ({$tabName})!";
-        }
-
-        return back()->with('success', "Data Penilai '{$assessorName}' berhasil diperbarui.{$sheetSyncNote}");
+        return back()->with('success', "Data penilai '{$assessorName}' berhasil diperbarui.");
     }
 
     public function setLeader(Group $group, GroupAssessor $assessor)
@@ -838,15 +797,9 @@ class GroupController extends Controller
         );
 
         // Sinkronisasi hapus penilai di Google Spreadsheet tab tim_penilai
-        $sheetSyncNote = '';
-        $sheetRes = $this->googleSheetService->deleteAssessor($groupNum, $nrp, $name);
-        if ($sheetRes['success'] && ($sheetRes['deleted_count'] ?? 1) > 0) {
-            $sheetSyncNote = " 🟢 Otomatis dihapus juga dari Google Spreadsheet tab tim_penilai!";
-        } elseif ($sheetRes['success'] && ($sheetRes['deleted_count'] ?? 1) === 0) {
-            $sheetSyncNote = " (Catatan: Baris tidak ditemukan di tab tim_penilai spreadsheet, atau pastikan kode Apps Script terbaru sudah diterapkan).";
-        }
+        $this->googleSheetService->deleteAssessor($groupNum, $nrp, $name);
 
-        return back()->with('success', "Penilai '{$name}' berhasil dihapus dari kelompok.{$sheetSyncNote}");
+        return back()->with('success', "Penilai '{$name}' berhasil dihapus.");
     }
 
     // =========================================================================

@@ -41,7 +41,7 @@ class PasswordController extends Controller
         $groupNumber = $user->group ? $user->group->number : null;
         $groupName = $user->group ? "Kelompok {$user->group->number} ({$user->group->name})" : 'Semua Area';
 
-        $sheetRes = $googleSheetService->cascadeUpdatePerson([
+        $googleSheetService->cascadeUpdatePerson([
             'nrp' => $nrp,
             'old_nrp' => $nrp,
             'name' => $user->name,
@@ -54,11 +54,6 @@ class PasswordController extends Controller
             'password' => $validated['password'],
         ]);
 
-        $syncMsg = 'Kata sandi berhasil diperbarui.';
-        if ($sheetRes['success'] ?? false) {
-            $syncMsg .= ' 🟢 Password baru otomatis tersinkronkan ke Google Spreadsheet (sheet Pengguna)!';
-        }
-
-        return back()->with('status', 'password-updated')->with('password_sync_success', $syncMsg);
+        return back()->with('status', 'password-updated')->with('password_sync_success', 'Kata sandi berhasil diperbarui.');
     }
 }
