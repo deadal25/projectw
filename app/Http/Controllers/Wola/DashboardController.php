@@ -10,8 +10,10 @@ use App\Models\Employee;
 use App\Models\Assessment;
 use App\Models\JobComment;
 use App\Models\User;
+use App\Services\GoogleSheetService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
@@ -20,6 +22,17 @@ class DashboardController extends Controller
      */
     public function adminDashboard(Request $request)
     {
+        // Auto-sinkronisasi hasil penilaian dari Google Spreadsheet jika masih kosong di database lokal
+        // atau jika belum disinkronkan dalam 2 menit terakhir
+        if (Assessment::count() === 0 || !Cache::has('wola_assessments_synced_recent')) {
+            try {
+                app(GoogleSheetService::class)->syncAssessments();
+                Cache::put('wola_assessments_synced_recent', true, now()->addMinutes(2));
+            } catch (\Exception $e) {
+                // Lanjutkan dengan data lokal jika koneksi ke Google Spreadsheet terkendala
+            }
+        }
+
         $search = $request->input('search');
         $statusFilter = $request->input('status', 'all');
         $sortBy = $request->input('sort', 'number_asc');
@@ -416,6 +429,17 @@ class DashboardController extends Controller
                 abort(404, 'Data kelompok tidak ditemukan.');
             }
             $allGroups = Group::orderBy('number')->get();
+        }
+
+        // Auto-sinkronisasi hasil penilaian dari Google Spreadsheet jika masih kosong di database lokal
+        // atau jika belum disinkronkan dalam 2 menit terakhir
+        if (Assessment::where('group_id', $group->id)->count() === 0 || !Cache::has('wola_assessments_synced_recent')) {
+            try {
+                app(GoogleSheetService::class)->syncAssessments();
+                Cache::put('wola_assessments_synced_recent', true, now()->addMinutes(2));
+            } catch (\Exception $e) {
+                // Ignore
+            }
         }
 
         $group->load([

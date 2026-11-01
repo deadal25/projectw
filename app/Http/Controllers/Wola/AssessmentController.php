@@ -101,6 +101,17 @@ class AssessmentController extends Controller
         $jobId = $request->input('job_id');
         $employeeId = $request->input('employee_id');
 
+        // Auto-sinkronisasi hasil penilaian dari Google Spreadsheet jika masih kosong di database lokal
+        // atau jika belum disinkronkan dalam 2 menit terakhir
+        if (Assessment::where('group_id', $group->id)->count() === 0 || !\Illuminate\Support\Facades\Cache::has('wola_assessments_synced_recent')) {
+            try {
+                $this->googleSheetService->syncAssessments();
+                \Illuminate\Support\Facades\Cache::put('wola_assessments_synced_recent', true, now()->addMinutes(2));
+            } catch (\Exception $e) {
+                // Ignore
+            }
+        }
+
         // Jika belum ada penilai yang dipilih, tampilkan layar pemilihan kartu penilai
         if (!$assessorId) {
             $assessors = $group->assessors;

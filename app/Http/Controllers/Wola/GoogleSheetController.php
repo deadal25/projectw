@@ -130,6 +130,17 @@ class GoogleSheetController extends Controller
             }
         }
 
+        if (in_array($scope, ['all', 'assessments', 'hasil_penilaian'])) {
+            $resAssessments = $this->googleSheetService->syncAssessments();
+            if ($resAssessments['success']) {
+                $messages[] = $resAssessments['message'];
+                $totalAdded += $resAssessments['added'];
+                $totalUpdated += $resAssessments['updated'];
+            } else {
+                $errors[] = $resAssessments['message'];
+            }
+        }
+
         // Catat timestamp sinkronisasi
         $summary = count($messages) > 0 ? implode(' | ', $messages) : 'Tidak ada data yang diproses.';
         $this->googleSheetService->saveSettings(

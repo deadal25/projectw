@@ -860,6 +860,12 @@ class GroupController extends Controller
                     'employee_id' => $empId,
                 ]);
                 $insertedCount++;
+
+                $emp = Employee::find($empId);
+                if ($emp && (empty($emp->area_wla) || $emp->area_wla !== $group->name)) {
+                    $emp->update(['area_wla' => $group->name]);
+                    $this->googleSheetService->updateEmployee($emp);
+                }
             }
         }
 
@@ -888,6 +894,12 @@ class GroupController extends Controller
         }
 
         GroupEmployee::where('group_id', $group->id)->where('employee_id', $employee->id)->delete();
+
+        // Jika karyawan memiliki area_wla yang sama dengan kelompok ini, reset area_wla dan sinkronkan ke Google Spreadsheet
+        if (strcasecmp(trim((string)$employee->area_wla), trim((string)$group->name)) === 0) {
+            $employee->update(['area_wla' => null]);
+            $this->googleSheetService->updateEmployee($employee);
+        }
 
         ActivityLog::log(
             'REMOVE_TARGET_EMPLOYEE',

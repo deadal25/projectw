@@ -441,6 +441,7 @@ class GoogleSheetService
 
         $added = 0;
         $updated = 0;
+        $validAssessorIds = [];
 
         foreach ($rows as $row) {
             $groupNumber = (int) $this->findValue($row, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok', 'kelompok', 'group_number', 'no', 'nomor', 'id']);
@@ -488,17 +489,26 @@ class GoogleSheetService
                     $existing->update(['is_leader' => true]);
                     $updated++;
                 }
+                $validAssessorIds[] = $existing->id;
             } else {
                 if ($isLeader) {
                     \App\Models\GroupAssessor::where('group_id', $group->id)->update(['is_leader' => false]);
                 }
-                \App\Models\GroupAssessor::create([
+                $newAssessor = \App\Models\GroupAssessor::create([
                     'group_id' => $group->id,
                     'employee_id' => $employee->id,
                     'is_leader' => $isLeader,
                 ]);
+                $validAssessorIds[] = $newAssessor->id;
                 $added++;
             }
+        }
+
+        // Bersihkan anggota penilai yang sudah tidak tercatat di spreadsheet (kecuali Ketua)
+        if (count($validAssessorIds) > 0) {
+            \App\Models\GroupAssessor::where('is_leader', false)
+                ->whereNotIn('id', $validAssessorIds)
+                ->delete();
         }
 
         return [
@@ -631,6 +641,151 @@ class GoogleSheetService
             'updated' => $updated,
             'total' => $added + $updated,
             'message' => "Sinkronisasi akun pengguna berhasil: {$added} ditambah, {$updated} diperbarui.",
+        ];
+    }
+
+    /**
+     * Sinkronkan Data Hasil Penilaian dari Google Sheet (tab 'Hasil_Penilaian')
+     */
+    public function syncAssessments(): array
+    {
+        $rows = [];
+        try {
+            $rows = $this->fetchSheetRows('Hasil_Penilaian');
+        } catch (\Exception $e) {
+            try {
+                $rows = $this->fetchSheetRows('hasil_penilaian');
+            } catch (\Exception $ex) {
+                return [
+                    'success' => false,
+                    'message' => "Tab 'Hasil_Penilaian' tidak ditemukan di Google Sheet.",
+                    'added' => 0,
+                    'updated' => 0,
+                    'total' => 0,
+                ];
+            }
+        }
+
+        if (empty($rows)) {
+            return [
+                'success' => true,
+                'message' => "Tab 'Hasil_Penilaian' di Google Sheet belum memiliki data.",
+                'added' => 0,
+                'updated' => 0,
+                'total' => 0,
+            ];
+        }
+
+        $added = 0;
+        $updated = 0;
+        $adminUser = \App\Models\User::whereHas('roles', fn($q) => $q->where('name', 'superadmin'))->first()
+            ?? \App\Models\User::first();
+
+        foreach ($rows as $r) {
+            $groupNum = trim($this->findValue($r, ['id_kelompok', 'idkelompok', 'nomor_kelompok', 'kelompok']) ?? '');
+            $namaJob = trim($this->findValue($r, ['posisi_job', 'nama_job', 'jabatan', 'job']) ?? '');
+
+            if (empty($groupNum) || empty($namaJob)) {
+                continue;
+            }
+
+            $group = Group::where('number', (int)$groupNum)->first();
+            if (!$group) continue;
+
+            $nrpPenilai = trim($this->findValue($r, ['nrp_penilai', 'nrp_assessor']) ?? '');
+            $namaPenilai = trim($this->findValue($r, ['penilai', 'nama_penilai', 'assessor']) ?? '');
+
+            $assessor = \App\Models\GroupAssessor::where('group_id', $group->id)
+                ->whereHas('employee', function($q) use ($nrpPenilai, $namaPenilai) {
+                    if ($nrpPenilai) $q->where('nrp', $nrpPenilai);
+                    else $q->where('fullname', 'like', "%{$namaPenilai}%");
+                })->first();
+
+            if (!$assessor && $namaPenilai) {
+                $assessor = \App\Models\GroupAssessor::where('group_id', $group->id)
+                    ->whereHas('employee', fn($q) => $q->whereRaw('LOWER(TRIM(fullname)) = ?', [strtolower($namaPenilai)]))
+                    ->first();
+            }
+
+            $nrpDinilai = trim($this->findValue($r, ['nrp_dinilai', 'nrp_karyawan', 'nrp']) ?? '');
+            $namaDinilai = trim($this->findValue($r, ['karyawan_dinilai', 'nama_karyawan', 'karyawan', 'nama']) ?? '');
+
+            $employee = null;
+            if ($nrpDinilai) {
+                $employee = Employee::where('nrp', $nrpDinilai)->first();
+            }
+            if (!$employee && $namaDinilai) {
+                $employee = Employee::whereRaw('LOWER(TRIM(fullname)) = ?', [strtolower($namaDinilai)])->first();
+            }
+
+            $job = \App\Models\Job::where('group_id', $group->id)
+                ->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($namaJob)])->first()
+                ?? \App\Models\Job::where('group_id', $group->id)->where('name', 'like', "%{$namaJob}%")->first();
+
+            if (!$group || !$assessor || !$employee || !$job) {
+                continue;
+            }
+
+            // Pastikan relasi kelompok sasaran terdaftar
+            \App\Models\GroupEmployee::firstOrCreate([
+                'group_id' => $group->id,
+                'employee_id' => $employee->id,
+            ]);
+
+            $rawDate = trim($this->findValue($r, ['tanggal_waktu', 'tanggal', 'waktu', 'date', 'created_at']) ?? '');
+            $checkedAt = now();
+            if (!empty($rawDate)) {
+                try {
+                    $checkedAt = \Carbon\Carbon::parse($rawDate);
+                } catch (\Exception $e) {}
+            }
+
+            $assessorUser = \App\Models\User::where('employee_id', $assessor->employee_id)->first() ?? $adminUser;
+
+            $assessment = Assessment::firstOrCreate(
+                [
+                    'assessor_id' => $assessor->id,
+                    'job_id' => $job->id,
+                    'employee_id' => $employee->id,
+                ],
+                [
+                    'group_id' => $group->id,
+                    'checked_by' => $assessorUser ? $assessorUser->id : 1,
+                    'checked_at' => $checkedAt,
+                ]
+            );
+
+            if ($assessment->wasRecentlyCreated) {
+                $added++;
+            } else {
+                $updated++;
+            }
+
+            $catatan = trim($this->findValue($r, ['catatan', 'komentar', 'notes', 'comment']) ?? '');
+            if (!empty($catatan)) {
+                \App\Models\JobComment::firstOrCreate(
+                    [
+                        'group_id' => $group->id,
+                        'job_id' => $job->id,
+                        'assessor_id' => $assessor->id,
+                        'employee_id' => $employee->id,
+                    ],
+                    [
+                        'user_id' => $assessorUser ? $assessorUser->id : null,
+                        'comment' => $catatan,
+                        'created_at' => $checkedAt,
+                        'updated_at' => $checkedAt,
+                    ]
+                );
+            }
+        }
+
+        return [
+            'success' => true,
+            'added' => $added,
+            'updated' => $updated,
+            'total' => $added + $updated,
+            'message' => "Sinkronisasi hasil penilaian berhasil: {$added} data baru ditambahkan, {$updated} data diverifikasi.",
         ];
     }
 
