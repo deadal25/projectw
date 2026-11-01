@@ -133,11 +133,11 @@ class EmployeeController extends Controller
             ->pluck('area_wla')
             ->toArray();
 
-        // Hanya sertakan area lain jika benar-benar tidak terdaftar pada kelompok mana pun (case-insensitive)
+        // Hanya sertakan area lain jika benar-benar tidak terdaftar pada kelompok mana pun (case-insensitive) dan bukan dummy test
         $otherAreas = [];
         foreach ($allEmployeeAreas as $empArea) {
             $lowerEmpArea = strtolower(trim($empArea));
-            if (!in_array($lowerEmpArea, $groupAreaNamesLower)) {
+            if (!in_array($lowerEmpArea, $groupAreaNamesLower) && !str_contains($lowerEmpArea, 'test')) {
                 $otherAreas[] = $empArea;
             }
         }

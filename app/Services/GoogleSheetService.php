@@ -123,34 +123,37 @@ class GoogleSheetService
      */
     public function parseCsv(string $csvContent): array
     {
-        $lines = preg_split("/\r\n|\n|\r/", $csvContent);
-        if (empty($lines)) {
+        if (empty(trim($csvContent))) {
             return [];
         }
 
+        $fp = fopen('php://temp', 'r+');
+        fwrite($fp, $csvContent);
+        rewind($fp);
+
         $headers = [];
-        $headerRow = str_getcsv(array_shift($lines));
+        $headerRow = fgetcsv($fp);
+        if (!$headerRow) {
+            fclose($fp);
+            return [];
+        }
+
         foreach ($headerRow as $h) {
             // Normalisasi: huruf kecil, ganti spasi/karakter khusus dengan underscore
-            $normalized = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '_', trim($h)), '_'));
+            $normalized = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '_', trim((string)$h)), '_'));
             $headers[] = $normalized;
         }
 
         $rows = [];
-        foreach ($lines as $line) {
-            if (empty(trim($line))) {
-                continue;
-            }
-
-            $colValues = str_getcsv($line);
-            if (count($colValues) === 0 || (count($colValues) === 1 && trim($colValues[0]) === '')) {
+        while (($colValues = fgetcsv($fp)) !== false) {
+            if (empty($colValues) || (count($colValues) === 1 && trim((string)$colValues[0]) === '')) {
                 continue;
             }
 
             $row = [];
             foreach ($headers as $index => $header) {
                 if (!empty($header)) {
-                    $row[$header] = isset($colValues[$index]) ? trim($colValues[$index]) : '';
+                    $row[$header] = isset($colValues[$index]) ? trim((string)$colValues[$index]) : '';
                 }
             }
 
@@ -167,6 +170,7 @@ class GoogleSheetService
                 $rows[] = $row;
             }
         }
+        fclose($fp);
 
         return $rows;
     }
@@ -2227,20 +2231,24 @@ class GoogleSheetService
 
         try {
             $assessments = Assessment::with(['group', 'assessor.employee', 'employee', 'job'])
-                ->orderBy('assessed_at', 'desc')
+                ->orderBy('checked_at', 'asc')
                 ->get();
 
             $rows = [];
             foreach ($assessments as $a) {
-                $dateStr = $a->assessed_at ? $a->assessed_at->format('Y-m-d H:i') : '';
+                $dateStr = $a->checked_at ? $a->checked_at->format('Y-m-d H:i') : now()->format('Y-m-d H:i');
                 $groupNum = $a->group ? $a->group->number : 1;
                 $assessorNrp = $a->assessor?->employee?->nrp ?? '-';
                 $assessorName = $a->assessor?->employee?->fullname ?? 'Ketua/Penilai';
                 $employeeNrp = $a->employee?->nrp ?? '-';
                 $employeeName = $a->employee?->fullname ?? '-';
                 $jobName = $a->job?->name ?? '-';
-                $status = $a->is_checked ? 'Dinilai' : 'Belum';
-                $comment = $a->notes ?? '-';
+                $status = 'Dinilai';
+                $comment = \App\Models\JobComment::where('job_id', $a->job_id)
+                    ->where('assessor_id', $a->assessor_id)
+                    ->where('employee_id', $a->employee_id)
+                    ->latest()
+                    ->value('comment') ?? '-';
 
                 $rows[] = [
                     $dateStr,

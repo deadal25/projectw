@@ -42,7 +42,7 @@ if (isset($_ENV['VERCEL']) || isset($_SERVER['VERCEL'])) {
 
     $tmpDb = '/tmp/database.sqlite';
     $bundledDb = dirname(__DIR__) . '/database/database.sqlite';
-    if (!file_exists($tmpDb) || filesize($tmpDb) === 0) {
+    if (!file_exists($tmpDb) || filesize($tmpDb) === 0 || (file_exists($bundledDb) && @filemtime($bundledDb) > @filemtime($tmpDb))) {
         if (file_exists($bundledDb)) {
             @copy($bundledDb, $tmpDb);
         } else {
