@@ -19,6 +19,16 @@
                     Export Excel
                 </a>
 
+                <!-- Tombol Sinkron Spreadsheet -->
+                <a href="{{ route('wola.employees.index', array_merge(request()->query(), ['sync' => 1])) }}"
+                   class="inline-flex items-center px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-sm transition"
+                   title="Tarik data karyawan terbaru langsung dari Google Spreadsheet">
+                    <svg class="w-4 h-4 me-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    <span>Sinkron Spreadsheet</span>
+                </a>
+
                 <!-- Tombol Buka Modal Import -->
                 <button type="button" @click="$dispatch('open-modal', 'import-employee-modal')"
                         class="inline-flex items-center px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl shadow-sm border border-slate-700 transition">

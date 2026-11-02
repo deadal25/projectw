@@ -210,6 +210,7 @@ class GoogleSheetService
 
         $added = 0;
         $updated = 0;
+        $validNrps = [];
 
         foreach ($rows as $row) {
             // Deteksi kolom NRP
@@ -220,6 +221,10 @@ class GoogleSheetService
             if (!$nrp || !$fullname) {
                 continue;
             }
+
+            $cleanNrp = trim((string)$nrp);
+            $cleanName = strtoupper(trim((string)$fullname));
+            $validNrps[] = $cleanNrp;
 
             $dept = $this->findValue($row, ['departemen', 'dept', 'department']) ?: 'MARKETING';
             $division = $this->findValue($row, ['divisi', 'division']) ?: 'SALES & MARKETING';
@@ -237,10 +242,14 @@ class GoogleSheetService
                 }
             }
 
-            $existing = Employee::where('nrp', $nrp)->first();
+            // Cari employee: utamakan berdasarkan NRP, jika tidak ketemu cari berdasarkan nama lengkap (mengantisipasi perubahan NRP)
+            $existing = Employee::where('nrp', $cleanNrp)->first();
+            if (!$existing && !empty($cleanName)) {
+                $existing = Employee::whereRaw('UPPER(TRIM(fullname)) = ?', [$cleanName])->first();
+            }
 
             $employeeData = [
-                'fullname' => strtoupper(trim($fullname)),
+                'fullname' => $cleanName,
                 'dept' => strtoupper(trim($dept)),
                 'division' => strtoupper(trim($division)),
                 'section' => $section ? strtoupper(trim($section)) : ($existing && $existing->section ? $existing->section : '-'),
@@ -250,13 +259,41 @@ class GoogleSheetService
                 'is_active' => true,
             ];
 
+            $emp = null;
             if ($existing) {
-                $existing->update($employeeData);
+                // Jika NRP berubah, perbarui juga username user terkait
+                if ($existing->nrp !== $cleanNrp) {
+                    \App\Models\User::where('username', $existing->nrp)
+                        ->orWhere('employee_id', $existing->id)
+                        ->update(['username' => $cleanNrp]);
+                }
+                $existing->update(array_merge(['nrp' => $cleanNrp], $employeeData));
+                $emp = $existing;
                 $updated++;
             } else {
-                Employee::create(array_merge(['nrp' => trim($nrp)], $employeeData));
+                $emp = Employee::create(array_merge(['nrp' => $cleanNrp], $employeeData));
                 $added++;
             }
+
+            // Otomatis masukkan ke kelompok target jika nama area cocok dengan kelompok
+            if ($emp && !empty($emp->area_wla)) {
+                $cleanArea = trim($emp->area_wla);
+                $matchedGroup = Group::whereRaw('LOWER(TRIM(name)) = ?', [strtolower($cleanArea)])->first();
+                if ($matchedGroup) {
+                    \App\Models\GroupEmployee::firstOrCreate([
+                        'group_id' => $matchedGroup->id,
+                        'employee_id' => $emp->id,
+                    ]);
+                }
+            }
+        }
+
+        // Bersihkan karyawan yang sudah dihapus dari sheet Karyawan (hanya jika data sheet lengkap >= 300)
+        if ($sourceSheet === 'Karyawan' && count($validNrps) >= 300) {
+            Employee::whereNotIn('nrp', $validNrps)
+                ->where('nrp', 'not like', 'K-%')
+                ->whereDoesntHave('user.roles', fn($q) => $q->whereIn('name', ['superadmin', 'admin']))
+                ->delete();
         }
 
         return [

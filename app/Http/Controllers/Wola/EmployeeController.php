@@ -16,6 +16,7 @@ use App\Imports\EmployeesImport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use App\Services\GoogleSheetService;
@@ -82,7 +83,35 @@ class EmployeeController extends Controller
      */
     public function index(Request $request)
     {
+        // Auto-sinkronisasi data karyawan dari Google Spreadsheet jika belum disinkronkan dalam 2 menit terakhir,
+        // atau jika data master kosong, atau jika parameter ?sync=1 disertakan
+        if (Employee::count() === 0 || !Cache::has('wola_employees_synced_recent') || $request->has('sync')) {
+            try {
+                $this->googleSheetService->syncEmployees();
+                $this->googleSheetService->syncAssessors();
+                Cache::put('wola_employees_synced_recent', true, now()->addMinutes(2));
+            } catch (\Exception $e) {
+                // Fallback ke data lokal jika koneksi terkendala
+            }
+        }
+
         $search = $request->input('search');
+
+        // Jika pencarian dilakukan dan belum ada di lokal, coba sinkronkan langsung dengan Google Spreadsheet
+        if ($search && !Cache::has('wola_search_synced_' . md5($search))) {
+            $hasLocalMatch = Employee::where(function ($q) use ($search) {
+                $q->where('nrp', 'like', "%{$search}%")
+                  ->orWhere('fullname', 'like', "%{$search}%");
+            })->exists();
+
+            if (!$hasLocalMatch) {
+                try {
+                    $this->googleSheetService->syncEmployees();
+                    Cache::put('wola_search_synced_' . md5($search), true, now()->addMinutes(1));
+                } catch (\Exception $e) {}
+            }
+        }
+
         $areaWla = $request->input('area_wla');
         $division = $request->input('division');
         $dept = $request->input('dept');
@@ -280,6 +309,7 @@ class EmployeeController extends Controller
 
         // Sinkronisasi otomatis ke Google Spreadsheet via Webhook Apps Script
         $this->googleSheetService->appendEmployee($employee);
+        Cache::forget('wola_employees_synced_recent');
 
         return redirect()->route('wola.employees.index')->with('success', "Data karyawan {$employee->fullname} berhasil ditambahkan.");
     }
@@ -392,6 +422,7 @@ class EmployeeController extends Controller
         ]);
 
         $this->googleSheetService->updateEmployee($employee);
+        Cache::forget('wola_employees_synced_recent');
 
         return redirect()->route('wola.employees.index')->with('success', "Data karyawan {$employee->fullname} berhasil diperbarui.");
     }
@@ -556,6 +587,9 @@ class EmployeeController extends Controller
             foreach ($groupsWithLeader as $grp) {
                 $grp->syncLeaderAssessor();
             }
+
+            Cache::forget('wola_employees_synced_recent');
+            Cache::forget('wola_assessments_synced_recent');
 
             return $deletedCount;
         });
