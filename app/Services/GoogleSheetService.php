@@ -233,7 +233,10 @@ class GoogleSheetService
             $plant = $this->findValue($row, ['plant', 'lokasi', 'factory']) ?: 'CIKARANG';
             $areaWla = $this->findValue($row, ['area_wla', 'area', 'wla', 'area_kerja']);
             $idKelompok = $this->findValue($row, ['id_kelompok', 'idkelompok', 'id_nama_kelompok', 'nomor_kelompok']);
-            if ($idKelompok && empty($areaWla)) {
+
+            // Jangan biarkan id_kelompok membangkitkan area_wla jika kolom area_wla ada tapi kosong (telah dikeluarkan)
+            $hasExplicitAreaCol = array_key_exists('area_wla', $row) || array_key_exists('Area_WLA', $row) || array_key_exists('area', $row);
+            if ($idKelompok && empty($areaWla) && !$hasExplicitAreaCol) {
                 $grp = Group::where('number', (int)$idKelompok)->first();
                 if ($grp) {
                     $areaWla = $grp->name;
@@ -255,7 +258,7 @@ class GoogleSheetService
                 'section' => $section ? strtoupper(trim($section)) : ($existing && $existing->section ? $existing->section : '-'),
                 'line' => $line ? strtoupper(trim($line)) : ($existing && $existing->line ? $existing->line : '-'),
                 'plant' => strtoupper(trim($plant)),
-                'area_wla' => $areaWla ? strtoupper(trim($areaWla)) : ($existing && $existing->area_wla ? $existing->area_wla : null),
+                'area_wla' => $areaWla ? strtoupper(trim($areaWla)) : null,
                 'is_active' => true,
             ];
 
@@ -275,15 +278,23 @@ class GoogleSheetService
                 $added++;
             }
 
-            // Otomatis masukkan ke kelompok target jika nama area cocok dengan kelompok
+            // Jika karyawan tidak memiliki area_wla, bersihkan dari relasi target kelompok
+            if ($emp && empty($emp->area_wla)) {
+                \App\Models\GroupEmployee::where('employee_id', $emp->id)->delete();
+            }
+
+            // Otomatis masukkan ke kelompok target hanya jika area_wla terisi dan BUKAN penilai di kelompok tersebut
             if ($emp && !empty($emp->area_wla)) {
                 $cleanArea = trim($emp->area_wla);
                 $matchedGroup = Group::whereRaw('LOWER(TRIM(name)) = ?', [strtolower($cleanArea)])->first();
                 if ($matchedGroup) {
-                    \App\Models\GroupEmployee::firstOrCreate([
-                        'group_id' => $matchedGroup->id,
-                        'employee_id' => $emp->id,
-                    ]);
+                    $isAssessor = \App\Models\GroupAssessor::where('group_id', $matchedGroup->id)->where('employee_id', $emp->id)->exists();
+                    if ($emp->wasRecentlyCreated || !$isAssessor) {
+                        \App\Models\GroupEmployee::firstOrCreate([
+                            'group_id' => $matchedGroup->id,
+                            'employee_id' => $emp->id,
+                        ]);
+                    }
                 }
             }
         }
@@ -1043,7 +1054,7 @@ class GoogleSheetService
     /**
      * Perbarui data karyawan di Google Spreadsheet via Webhook Apps Script
      */
-    public function updateEmployee(Employee $employee): array
+    public function updateEmployee(Employee $employee, array $overrideData = []): array
     {
         $settings = $this->getSettings();
         $webhookUrl = $settings['apps_script_url'] ?? null;
@@ -1053,21 +1064,24 @@ class GoogleSheetService
         }
 
         try {
+            $data = array_merge([
+                'nrp' => $employee->nrp,
+                'fullname' => $employee->fullname,
+                'dept' => $employee->dept,
+                'division' => $employee->division,
+                'plant' => $employee->plant,
+                'area_wla' => $employee->area_wla ?? '',
+                'id_kelompok' => '',
+            ], $overrideData);
+
             $payload = [
                 'action' => 'update',
                 'sheet' => 'Karyawan',
                 'nrp' => $employee->nrp,
-                'data' => [
-                    'nrp' => $employee->nrp,
-                    'fullname' => $employee->fullname,
-                    'dept' => $employee->dept,
-                    'division' => $employee->division,
-                    'plant' => $employee->plant,
-                    'area_wla' => $employee->area_wla ?? '',
-                ],
+                'data' => $data,
             ];
 
-            $response = Http::timeout(10)
+            $response = Http::timeout(20)
                 ->withOptions(['allow_redirects' => true])
                 ->post($webhookUrl, $payload);
 
@@ -2652,6 +2666,7 @@ function doPost(e) {
               if (data.data.division) sheet.getRange(rowIdx, 4).setValue(data.data.division);
               if (data.data.plant) sheet.getRange(rowIdx, 5).setValue(data.data.plant);
               if (data.data.area_wla !== undefined) sheet.getRange(rowIdx, 6).setValue(data.data.area_wla);
+              if (data.data.id_kelompok !== undefined) sheet.getRange(rowIdx, 7).setValue(data.data.id_kelompok);
             }
             break;
           }

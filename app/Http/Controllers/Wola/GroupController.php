@@ -13,6 +13,7 @@ use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use App\Services\GoogleSheetService;
 
@@ -895,11 +896,18 @@ class GroupController extends Controller
 
         GroupEmployee::where('group_id', $group->id)->where('employee_id', $employee->id)->delete();
 
-        // Jika karyawan memiliki area_wla yang sama dengan kelompok ini, reset area_wla dan sinkronkan ke Google Spreadsheet
-        if (strcasecmp(trim((string)$employee->area_wla), trim((string)$group->name)) === 0) {
+        // Reset area_wla jika terkait dengan kelompok ini
+        if (empty($employee->area_wla) || strcasecmp(trim((string)$employee->area_wla), trim((string)$group->name)) === 0) {
             $employee->update(['area_wla' => null]);
-            $this->googleSheetService->updateEmployee($employee);
         }
+
+        // Sinkronkan ke Google Spreadsheet (kosongkan Area_WLA dan ID_Kelompok agar tidak tersinkron kembali)
+        $this->googleSheetService->updateEmployee($employee, [
+            'area_wla' => '',
+            'id_kelompok' => '',
+        ]);
+
+        Cache::forget('wola_employees_synced_recent');
 
         ActivityLog::log(
             'REMOVE_TARGET_EMPLOYEE',
