@@ -797,7 +797,7 @@
 
                      toggleSelectAll() {
                          if (this.selectAll) {
-                             this.selectedEmployees = this.searchResults.map(e => e.id);
+                             this.selectedEmployees = this.searchResults.filter(e => !e.is_already_member).map(e => e.id);
                          } else {
                              this.selectedEmployees = [];
                          }
@@ -950,18 +950,30 @@
                                             </thead>
                                             <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
                                                 <template x-for="emp in searchResults" :key="emp.id">
-                                                    <tr class="hover:bg-blue-50/50 dark:hover:bg-slate-800/50 cursor-pointer"
-                                                        @click="if (!selectedEmployees.includes(emp.id)) { selectedEmployees.push(emp.id); } else { selectedEmployees = selectedEmployees.filter(id => id !== emp.id); }">
-                                                        <td class="py-2 px-3 text-center" @click.stop>
-                                                            <input type="checkbox" name="employee_ids[]" :value="emp.id" x-model="selectedEmployees"
-                                                                   class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">
+                                                    <tr :class="emp.is_already_member ? 'bg-slate-50/80 dark:bg-slate-800/40 opacity-75' : 'hover:bg-blue-50/50 dark:hover:bg-slate-800/50 cursor-pointer'"
+                                                        @click="if (!emp.is_already_member) { if (!selectedEmployees.includes(emp.id)) { selectedEmployees.push(emp.id); } else { selectedEmployees = selectedEmployees.filter(id => id !== emp.id); } }">
+                                                        <td class="py-2.5 px-3 text-center" @click.stop>
+                                                            <template x-if="!emp.is_already_member">
+                                                                <input type="checkbox" name="employee_ids[]" :value="emp.id" x-model="selectedEmployees"
+                                                                       class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer">
+                                                            </template>
+                                                            <template x-if="emp.is_already_member">
+                                                                <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 font-bold text-xs" title="Sudah Terdaftar">✓</span>
+                                                            </template>
                                                         </td>
-                                                        <td class="py-2 px-3 font-semibold text-blue-700 dark:text-blue-300" x-text="emp.area_wla || '-'"></td>
-                                                        <td class="py-2 px-3 font-mono font-bold text-blue-600 dark:text-blue-400" x-text="emp.nrp"></td>
-                                                        <td class="py-2 px-3 font-semibold text-slate-900 dark:text-white" x-text="emp.fullname"></td>
-                                                        <td class="py-2 px-3 text-slate-700 dark:text-slate-300" x-text="emp.division || emp.section || '-'"></td>
-                                                        <td class="py-2 px-3 text-slate-600 dark:text-slate-400" x-text="emp.dept"></td>
-                                                        <td class="py-2 px-3" x-text="emp.plant"></td>
+                                                        <td class="py-2.5 px-3">
+                                                            <span class="font-semibold text-blue-700 dark:text-blue-300" x-text="emp.area_wla || '-'"></span>
+                                                            <template x-if="emp.is_already_member">
+                                                                <span class="ms-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                                                    Terdaftar di Kelompok Ini
+                                                                </span>
+                                                            </template>
+                                                        </td>
+                                                        <td class="py-2.5 px-3 font-mono font-bold text-blue-600 dark:text-blue-400" x-text="emp.nrp"></td>
+                                                        <td class="py-2.5 px-3 font-semibold text-slate-900 dark:text-white" x-text="emp.fullname"></td>
+                                                        <td class="py-2.5 px-3 text-slate-700 dark:text-slate-300" x-text="emp.division || emp.section || '-'"></td>
+                                                        <td class="py-2.5 px-3 text-slate-600 dark:text-slate-400" x-text="emp.dept"></td>
+                                                        <td class="py-2.5 px-3" x-text="emp.plant"></td>
                                                     </tr>
                                                 </template>
                                             </tbody>

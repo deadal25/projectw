@@ -818,9 +818,24 @@ class GroupController extends Controller
         $search = $request->input('q');
         $dept = $request->input('dept');
 
+        // Jika pencarian spesifik belum ditemukan di lokal, sinkronkan cepat dari Google Spreadsheet
+        if ($search && !Cache::has('wola_grp_search_synced_' . md5($search))) {
+            $hasLocalMatch = Employee::where(function ($q) use ($search) {
+                $q->where('nrp', 'like', "%{$search}%")
+                  ->orWhere('fullname', 'like', "%{$search}%");
+            })->exists();
+
+            if (!$hasLocalMatch) {
+                try {
+                    $this->googleSheetService->syncEmployees();
+                    Cache::put('wola_grp_search_synced_' . md5($search), true, now()->addMinutes(1));
+                } catch (\Exception $e) {}
+            }
+        }
+
         $assignedIds = GroupEmployee::where('group_id', $group->id)->pluck('employee_id')->toArray();
 
-        $query = Employee::whereNotIn('id', $assignedIds);
+        $query = Employee::query();
 
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -833,7 +848,11 @@ class GroupController extends Controller
             $query->where('dept', $dept);
         }
 
-        $employees = $query->orderBy('nrp')->limit(50)->get(['id', 'nrp', 'fullname', 'area_wla', 'division', 'dept', 'section', 'plant']);
+        $employees = $query->orderBy('nrp')->limit(50)->get(['id', 'nrp', 'fullname', 'area_wla', 'division', 'dept', 'section', 'plant'])
+            ->map(function ($emp) use ($assignedIds) {
+                $emp->is_already_member = in_array($emp->id, $assignedIds);
+                return $emp;
+            });
 
         return response()->json($employees);
     }

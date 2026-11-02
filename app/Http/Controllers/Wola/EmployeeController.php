@@ -151,7 +151,10 @@ class EmployeeController extends Controller
         $employees = $query->orderBy('nrp')->paginate(15)->withQueryString();
 
         // Data untuk dropdown filter - selalu urutkan kelompok mulai dari Kelompok 1..12
-        $groups = Group::orderBy('number')->get();
+        $groups = Group::where('name', 'not like', '%test%')
+            ->where('name', 'not like', '%tes%')
+            ->orderBy('number')
+            ->get();
         $groupAreaNames = $groups->pluck('name')->filter()->values()->toArray();
         $groupAreaNamesLower = array_map('strtolower', array_map('trim', $groupAreaNames));
 
@@ -162,11 +165,11 @@ class EmployeeController extends Controller
             ->pluck('area_wla')
             ->toArray();
 
-        // Hanya sertakan area lain jika benar-benar tidak terdaftar pada kelompok mana pun (case-insensitive) dan bukan dummy test
+        // Hanya sertakan area lain jika benar-benar tidak terdaftar pada kelompok mana pun (case-insensitive) dan bukan dummy test/tes
         $otherAreas = [];
         foreach ($allEmployeeAreas as $empArea) {
             $lowerEmpArea = strtolower(trim($empArea));
-            if (!in_array($lowerEmpArea, $groupAreaNamesLower) && !str_contains($lowerEmpArea, 'test')) {
+            if (!in_array($lowerEmpArea, $groupAreaNamesLower) && !preg_match('/(tes|test|dummy|sample)/i', $lowerEmpArea)) {
                 $otherAreas[] = $empArea;
             }
         }
@@ -177,12 +180,23 @@ class EmployeeController extends Controller
         $plants = Employee::distinct()->whereNotNull('plant')->where('plant', '!=', '')->orderBy('plant')->pluck('plant');
 
         // Hitungan per kategori untuk preview real-time saat menghapus
-        $areaCounts = Employee::whereNotNull('area_wla')
+        $rawAreaCounts = Employee::whereNotNull('area_wla')
             ->where('area_wla', '!=', '')
             ->select('area_wla', DB::raw('count(*) as total'))
             ->groupBy('area_wla')
             ->pluck('total', 'area_wla')
             ->toArray();
+
+        $areaCounts = [];
+        foreach ($areas as $a) {
+            $matchedTotal = 0;
+            foreach ($rawAreaCounts as $rawA => $cnt) {
+                if (strcasecmp(trim($rawA), trim($a)) === 0) {
+                    $matchedTotal += $cnt;
+                }
+            }
+            $areaCounts[$a] = $matchedTotal;
+        }
 
         $divisionCounts = Employee::whereNotNull('division')
             ->where('division', '!=', '')

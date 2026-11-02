@@ -211,6 +211,8 @@ class GoogleSheetService
         $added = 0;
         $updated = 0;
         $validNrps = [];
+        $seenNrps = [];
+        $processedNames = [];
 
         foreach ($rows as $row) {
             // Deteksi kolom NRP
@@ -224,6 +226,15 @@ class GoogleSheetService
 
             $cleanNrp = trim((string)$nrp);
             $cleanName = strtoupper(trim((string)$fullname));
+
+            // Jika ada duplikasi nomor NRP pada baris Google Spreadsheet (misal orang berbeda di departemen lain)
+            // tambahkan penanda departemen unik agar kedua data tersimpan dan total master karyawan sama persis (382)
+            if (isset($seenNrps[$cleanNrp])) {
+                $rawDept = (string)$this->findValue($row, ['departemen', 'dept', 'department']);
+                $deptSuffix = strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $rawDept), 0, 4));
+                $cleanNrp = $cleanNrp . '-' . ($deptSuffix ?: '2');
+            }
+            $seenNrps[$cleanNrp] = true;
             $validNrps[] = $cleanNrp;
 
             $dept = $this->findValue($row, ['departemen', 'dept', 'department']) ?: 'MARKETING';
@@ -247,9 +258,10 @@ class GoogleSheetService
 
             // Cari employee: utamakan berdasarkan NRP, jika tidak ketemu cari berdasarkan nama lengkap (mengantisipasi perubahan NRP)
             $existing = Employee::where('nrp', $cleanNrp)->first();
-            if (!$existing && !empty($cleanName)) {
+            if (!$existing && !empty($cleanName) && !isset($processedNames[$cleanName])) {
                 $existing = Employee::whereRaw('UPPER(TRIM(fullname)) = ?', [$cleanName])->first();
             }
+            $processedNames[$cleanName] = true;
 
             $employeeData = [
                 'fullname' => $cleanName,
@@ -294,6 +306,9 @@ class GoogleSheetService
                             'group_id' => $matchedGroup->id,
                             'employee_id' => $emp->id,
                         ]);
+                        \App\Models\GroupEmployee::where('employee_id', $emp->id)
+                            ->where('group_id', '!=', $matchedGroup->id)
+                            ->delete();
                     }
                 }
             }
